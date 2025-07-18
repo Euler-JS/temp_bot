@@ -1,5 +1,7 @@
 // weather_api/weather_service.js
+require('dotenv').config();
 const axios = require("axios");
+
 
 class WeatherService {
     constructor() {

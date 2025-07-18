@@ -1,8 +1,11 @@
+require('dotenv').config();
 const express = require("express");
+
 const fs = require("fs");
 const bodyParser = require("body-parser");
 const WhatsAppApi = require("./whatsapp_api/connection");
 const WeatherService = require("./weather_api/weather_service");
+const OPENAI = require("./open_ai/open_ai");
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -12,12 +15,15 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.json());
 
 // WHATSAPP API Configuration
-const token = process.env.WHATSAPP_TOKEN || "EAALehhs9erIBPBfnvvsnCCXDw7wZCtL4XnmCXZBthQZAXL7PIwVIHVexLVpi67OpzCZBmoFn1qN1IO99H34ZAsXH7scepVDqcb1QiVozsiB7UnSU9hXLSAKroMUZCuNxKfBsGUUxxK8IKkkorKLUGELz63rIYFVoevCKtY9ursPkTJQaRZC4xbhArEXb844zNWhxrO1ZBAveFZA9WVa6Vs9OSihlHpJ4yOf49g78a8sHBLSTQjijk";
-const phoneNumberID = process.env.PHONE_NUMBER_ID || "315122965020635";
+const token = process.env.WHATSAPP_TOKEN || "";
+const phoneNumberID = process.env.PHONE_NUMBER_ID || "";
 
 // Inicializar serviços
 const whatsappApi = new WhatsAppApi(token, phoneNumberID);
 const weatherService = new WeatherService();
+
+//OPENAI SERVICE
+const openaiService = new OPENAI(process.env.OPEN_AI || "");
 
 // Comandos disponíveis
 const optionsCases = [
@@ -74,11 +80,27 @@ app.post("/webhook", async (req, res) => {
     if (change.field === "messages" && change?.value?.messages?.length > 0) {
       const message = change.value.messages[0];
       const remetenteFile = message.from;
+      const phoneNumber = message.from;
+      const user = getUserByContact(phoneNumber);
 
       console.log("Mensagem recebida:", message);
 
       // Processar diferentes tipos de mensagem
       if (message?.type === "text") {
+        const messageText = message.text.body;
+
+        // Verificar se é análise detalhada
+        if (await processDetailedAnalysis(messageText, phoneNumber, user)) {
+          res.sendStatus(200);
+          return;
+        }
+
+        // Verificar se é consulta de clima
+        if (await isWeatherQuery(messageText)) {
+          await processWeatherMessage(messageText, phoneNumber, user);
+          res.sendStatus(200);
+          return;
+        }
         await processTextMessage(message.text.body, remetenteFile);
       } else if (message?.type === "interactive") {
         await processInteractiveMessage(message.interactive, remetenteFile);
@@ -694,7 +716,283 @@ function checkAwaitingCityInput(message, phoneNumber) {
   return false;
 }
 
-app.listen(port, () => {
+// ================================
+// EXEMPLO 1: Consulta de clima com IA
+// ================================
+async function processWeatherQueryWithAI(message, phoneNumber, user) {
+  try {
+    const cityName = extractCityFromMessage(message) || user?.preferredCity;
+
+    if (!cityName) {
+      await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+        "Por favor, me informe o nome da cidade. Exemplo: 'Clima em Maputo'",
+        phoneNumber
+      );
+      return;
+    }
+
+    // 1. Mostrar que está processando
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Analisando clima com IA');
+
+    // 2. Buscar dados do clima
+    const weatherData = await weatherService.getCurrentWeather(
+      cityName,
+      user?.units || 'celsius'
+    );
+
+    // 3. 🤖 HUMANIZAR COM OPENAI
+    const aiResult = await openaiService.humanizeWeatherData(weatherData, {
+      language: user?.language || 'pt',
+      location: 'Moçambique'
+    });
+
+    // 4. Enviar resposta humanizada
+    if (aiResult.success) {
+      // Resposta da IA - mais amigável e completa
+      await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+        `🤖 *Análise Inteligente do Clima*\n\n${aiResult.humanizedText}`,
+        phoneNumber
+      );
+    } else {
+      // Fallback caso IA falhe
+      console.log('IA falhou, usando fallback:', aiResult.error);
+      const basicMessage = formatBasicWeatherMessage(weatherData);
+      await whatsappApi.enviarMensagemUsandoWhatsappAPI(basicMessage, phoneNumber);
+    }
+
+    // 5. Salvar no histórico
+    saveWeatherHistory(phoneNumber, weatherData.city, weatherData.temperature, weatherData.description);
+
+    // 6. Oferecer ações adicionais
+    await whatsappApi.enviarBotoesAcaoRapida(phoneNumber, weatherData.city);
+
+  } catch (error) {
+    console.error("Erro na consulta com IA:", error);
+    await whatsappApi.enviarMensagemErro(
+      phoneNumber,
+      "Não consegui analisar o clima",
+      "Tente novamente em alguns minutos"
+    );
+  }
+}
+
+// ================================
+// EXEMPLO 2: Previsão com análise inteligente
+// ================================
+async function sendIntelligentForecast(phoneNumber, city, user) {
+  try {
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Gerando análise inteligente da previsão');
+
+    // 1. Buscar previsão
+    const forecast = await weatherService.getWeatherForecast(city, 7);
+
+    // 2. 🤖 HUMANIZAR COM OPENAI
+    const aiResult = await openaiService.humanizeWeatherForecast(forecast, city, {
+      language: user?.language || 'pt'
+    });
+
+    if (aiResult.success) {
+      await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+        `🔮 *Previsão Inteligente - ${city}*\n\n${aiResult.humanizedText}`,
+        phoneNumber
+      );
+    } else {
+      // Fallback básico
+      const basicForecast = createBasicForecast(forecast, city);
+      await whatsappApi.enviarMensagemUsandoWhatsappAPI(basicForecast, phoneNumber);
+    }
+
+  } catch (error) {
+    console.error("Erro na previsão inteligente:", error);
+    await whatsappApi.enviarMensagemErro(phoneNumber, "Erro na análise da previsão");
+  }
+}
+
+// ================================
+// EXEMPLO 3: Recomendações personalizadas
+// ================================
+async function sendPersonalizedRecommendations(phoneNumber, weatherData, user) {
+  try {
+    // Definir preferências do usuário baseado no perfil
+    const userPreferences = {
+      activities: user?.preferredActivities || 'atividades gerais',
+      workType: user?.workType || 'trabalho geral',
+      healthConcerns: user?.healthConcerns || []
+    };
+
+    // 🤖 GERAR RECOMENDAÇÕES COM IA
+    const recommendations = await openaiService.generateWeatherRecommendations(
+      weatherData,
+      userPreferences
+    );
+
+    if (recommendations.success) {
+      await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+        `💡 *Recomendações Personalizadas*\n\n${recommendations.recommendations}`,
+        phoneNumber
+      );
+    }
+
+  } catch (error) {
+    console.error("Erro nas recomendações:", error);
+  }
+}
+
+// ================================
+// EXEMPLO 4: Comando de análise detalhada
+// ================================
+async function processDetailedAnalysis(message, phoneNumber, user) {
+  if (!message.includes('análise') && !message.includes('detalhes')) {
+    return false; // Não é um comando de análise
+  }
+
+  try {
+    const cityName = extractCityFromMessage(message) || user?.preferredCity;
+
+    if (!cityName) {
+      await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+        "Para análise detalhada, informe a cidade. Ex: 'Análise detalhada de Maputo'",
+        phoneNumber
+      );
+      return true;
+    }
+
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Gerando análise detalhada com IA');
+
+    // Buscar dados atuais e previsão
+    const [currentWeather, forecast] = await Promise.all([
+      weatherService.getCurrentWeather(cityName, user?.units || 'celsius'),
+      weatherService.getWeatherForecast(cityName, 3)
+    ]);
+
+    // Criar prompt especial para análise detalhada
+    const detailedPrompt = `
+Faça uma análise meteorológica detalhada mas acessível para ${cityName}:
+
+CLIMA ATUAL:
+- Temperatura: ${currentWeather.temperature}${currentWeather.units}
+- Sensação: ${currentWeather.feelsLike}${currentWeather.units}
+- Umidade: ${currentWeather.humidity}%
+- Condições: ${currentWeather.description}
+
+PRÓXIMOS 3 DIAS:
+${forecast.map((day, i) => `Dia ${i + 1}: ${day.minTemp}°-${day.maxTemp}°, ${day.description}`).join('\n')}
+
+Crie uma análise que inclua:
+1. Situação atual explicada de forma simples
+2. Comparação com temperaturas típicas da região
+3. Tendência dos próximos dias
+4. Impactos práticos (conforto, atividades, saúde)
+5. Recomendações específicas
+6. Melhor horário para atividades ao ar livre
+
+Máximo 400 palavras, tom educativo mas acessível.
+        `;
+
+    const analysis = await openaiService.callOpenAI(detailedPrompt, 0.3); // Temperatura baixa para mais precisão
+
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      `📊 *Análise Meteorológica Detalhada - ${cityName}*\n\n${analysis}`,
+      phoneNumber
+    );
+
+    return true;
+
+  } catch (error) {
+    console.error("Erro na análise detalhada:", error);
+    await whatsappApi.enviarMensagemErro(phoneNumber, "Erro na análise detalhada");
+    return true;
+  }
+}
+
+// ================================
+// FUNÇÃO PRINCIPAL: Escolher entre IA ou básico
+// ================================
+async function processWeatherMessage(message, phoneNumber, user) {
+  // Verificar se usuário tem IA ativada (premium feature)
+  // const hasAIPlan = user?.plan === 'premium' || user?.aiEnabled === true;
+
+  // if (hasAIPlan) {
+  // 🤖 Usar IA para resposta mais rica
+  await processWeatherQueryWithAI(message, phoneNumber, user);
+  // } else {
+  //   // 📝 Usar resposta básica
+  //   await processBasicWeatherQuery(message, phoneNumber, user);
+
+  //   // Oferecer upgrade para IA
+  //   await offerAIUpgrade(phoneNumber);
+  // }
+}
+
+// Oferecer upgrade para funcionalidades IA
+async function offerAIUpgrade(phoneNumber) {
+  const upgradeMessage = `
+🤖 *Quer respostas mais inteligentes?*
+
+Com o plano Premium você recebe:
+• Análise meteorológica com IA
+• Explicações personalizadas e simples
+• Recomendações baseadas no seu perfil
+• Dicas específicas para sua região
+
+💎 Digite */premium* para saber mais!
+    `.trim();
+
+  setTimeout(async () => {
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(upgradeMessage, phoneNumber);
+  }, 5000); // Enviar após 5 segundos
+}
+
+// ================================
+// FUNÇÕES AUXILIARES
+// ================================
+
+function formatBasicWeatherMessage(data) {
+  const emoji = getWeatherEmoji(data.description);
+
+  return `${emoji} *Clima em ${data.city}, ${data.country}*\n\n` +
+    `🌡️ *Temperatura:* ${data.temperature}${data.units}\n` +
+    `🤲 *Sensação térmica:* ${data.feelsLike}${data.units}\n` +
+    `💧 *Umidade:* ${data.humidity}%\n` +
+    `📝 *Condições:* ${data.description}`;
+}
+
+function createBasicForecast(forecast, city) {
+  let message = `📅 *Previsão para ${city}*\n\n`;
+
+  forecast.slice(0, 3).forEach((day, index) => {
+    const dayName = index === 0 ? 'Hoje' : index === 1 ? 'Amanhã' : 'Depois';
+    const emoji = getWeatherEmoji(day.description);
+    message += `${emoji} ${dayName}: ${day.minTemp}° a ${day.maxTemp}°\n   ${day.description}\n\n`;
+  });
+
+  return message;
+}
+
+function getWeatherEmoji(description) {
+  const desc = description.toLowerCase();
+  if (desc.includes('sol') || desc.includes('clear')) return '☀️';
+  if (desc.includes('chuva') || desc.includes('rain')) return '🌧️';
+  if (desc.includes('nuvem') || desc.includes('cloud')) return '☁️';
+  if (desc.includes('tempest') || desc.includes('storm')) return '⛈️';
+  return '🌤️';
+}
+
+
+app.listen(port, async () => {
   console.log(`🌡️ Temperature Bot running on port ${port}`);
   console.log(`📅 Started at: ${new Date().toLocaleString()}`);
+  // Testar conexão com OpenAI
+  // if (process.env.OPENAI_API_KEY) {
+  //   console.log('🤖 Testando conexão com OpenAI...');
+  //   const testResult = await openaiService.testConnection();
+
+  //   if (testResult.success) {
+  //     console.log('✅ OpenAI conectado com sucesso!');
+  //   } else {
+  //     console.log('❌ Erro na conexão OpenAI:', testResult.error);
+  //   }
+  // } else {
+  //   console.log('⚠️ OPENAI_API_KEY não configurada - funcionalidades IA desabilitadas');
+  // }
 });

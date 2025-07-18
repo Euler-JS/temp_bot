@@ -1,5 +1,7 @@
 // whatsapp_api/connection.js - Adaptado para Temperature Bot
+require('dotenv').config();
 const axios = require("axios");
+
 
 class WhatsAppApi {
     constructor(token, phoneNumberID) {
@@ -261,20 +263,20 @@ class WhatsAppApi {
                                 title: "📅 Previsão 7 dias"
                             }
                         },
-                        {
-                            type: "reply",
-                            reply: {
-                                id: `alerts_${cidade}`,
-                                title: "🚨 Configurar Alertas"
-                            }
-                        },
-                        {
-                            type: "reply",
-                            reply: {
-                                id: "share_weather",
-                                title: "📤 Compartilhar"
-                            }
-                        }
+                        // {
+                        //     type: "reply",
+                        //     reply: {
+                        //         id: `alerts_${cidade}`,
+                        //         title: "🚨 Configurar Alertas"
+                        //     }
+                        // },
+                        // {
+                        //     type: "reply",
+                        //     reply: {
+                        //         id: "share_weather",
+                        //         title: "📤 Compartilhar"
+                        //     }
+                        // }
                     ]
                 }
             }
