@@ -442,6 +442,384 @@ class WhatsAppApi {
         const successMessage = `${emoji} *Sucesso!*\n\n${mensagem}`;
         return await this.enviarMensagemUsandoWhatsappAPI(successMessage, numeroCelular);
     }
+
+    // **NOVO** - Sugestões inteligentes baseadas no contexto
+    async enviarSugestoesInteligentes(numeroCelular, sugestoes, contexto = {}) {
+        if (!sugestoes || sugestoes.length === 0) return;
+
+        const { cidade, aspectoClima, nivelUsuario } = contexto;
+
+        const headerText = nivelUsuario === 'advanced' ?
+            "🧠 Análises Relacionadas" :
+            "💡 Você pode se interessar por";
+
+        const suggestionMenu = {
+            messaging_product: 'whatsapp',
+            recipient_type: "individual",
+            to: numeroCelular,
+            type: "interactive",
+            interactive: {
+                type: "list",
+                header: {
+                    type: "text",
+                    text: headerText
+                },
+                body: {
+                    text: `Baseado na sua consulta${cidade ? ` sobre ${cidade}` : ''}, aqui estão algumas sugestões:`
+                },
+                footer: {
+                    text: "Toque para explorar"
+                },
+                action: {
+                    button: "Ver Sugestões",
+                    sections: [
+                        {
+                            title: "Sugestões Personalizadas",
+                            rows: sugestoes.slice(0, 10).map((sugestao, index) => ({
+                                id: `smart_suggestion_${index}`,
+                                title: sugestao.length > 24 ? sugestao.substring(0, 21) + '...' : sugestao,
+                                description: this.getContextualDescription(sugestao, contexto)
+                            }))
+                        }
+                    ]
+                }
+            }
+        };
+
+        return await this.enviarMensagemInterativaUsandoWhatsappAPI(suggestionMenu);
+    }
+
+    // **NOVO** - Botões de ação contextual baseados na expertise do usuário
+    async enviarAcoesContextuais(numeroCelular, dados, nivelUsuario = 'basic') {
+        const { cidade, temperatura, condicoes } = dados;
+
+        let botoes = [];
+
+        // Botões básicos para todos
+        botoes.push({
+            type: "reply",
+            reply: {
+                id: `forecast_${cidade}`,
+                title: "📅 Previsão 7 dias"
+            }
+        });
+
+        // Botões intermediários
+        if (nivelUsuario === 'intermediate' || nivelUsuario === 'advanced') {
+            botoes.push({
+                type: "reply",
+                reply: {
+                    id: `compare_cities`,
+                    title: "⚖️ Comparar Cidades"
+                }
+            });
+        }
+
+        // Botões avançados
+        if (nivelUsuario === 'advanced') {
+            botoes.push({
+                type: "reply",
+                reply: {
+                    id: `detailed_analysis`,
+                    title: "📊 Análise Técnica"
+                }
+            });
+        } else {
+            botoes.push({
+                type: "reply",
+                reply: {
+                    id: `weather_tips`,
+                    title: "💡 Dicas Práticas"
+                }
+            });
+        }
+
+        const contextualActions = {
+            messaging_product: 'whatsapp',
+            recipient_type: "individual",
+            to: numeroCelular,
+            type: "interactive",
+            interactive: {
+                type: "button",
+                header: {
+                    type: "text",
+                    text: `🌤️ Ações para ${cidade}`
+                },
+                body: {
+                    text: `${temperatura}°C, ${condicoes}\n\nO que você gostaria de fazer agora?`
+                },
+                action: {
+                    buttons: botoes.slice(0, 3) // WhatsApp permite máximo 3 botões
+                }
+            }
+        };
+
+        return await this.enviarMensagemInterativaUsandoWhatsappAPI(contextualActions);
+    }
+
+    // **NOVO** - Menu de comparação de cidades inteligente
+    async enviarMenuComparacaoCidades(numeroCelular, cidadeAtual, cidadesSugeridas = []) {
+        const sections = [
+            {
+                title: "Comparar com",
+                rows: cidadesSugeridas.slice(0, 8).map((cidade, index) => ({
+                    id: `compare_${cidadeAtual}_${cidade.replace(/\s+/g, '_')}`,
+                    title: cidade,
+                    description: `${cidadeAtual} vs ${cidade}`
+                }))
+            }
+        ];
+
+        // Adicionar opção personalizada
+        sections[0].rows.push({
+            id: "compare_custom",
+            title: "Outra cidade",
+            description: "Digite o nome da cidade"
+        });
+
+        const comparisonMenu = {
+            messaging_product: 'whatsapp',
+            recipient_type: "individual",
+            to: numeroCelular,
+            type: "interactive",
+            interactive: {
+                type: "list",
+                header: {
+                    type: "text",
+                    text: "⚖️ Comparação Climática"
+                },
+                body: {
+                    text: `Com qual cidade você gostaria de comparar ${cidadeAtual}?`
+                },
+                footer: {
+                    text: "Selecione uma opção"
+                },
+                action: {
+                    button: "Comparar",
+                    sections: sections
+                }
+            }
+        };
+
+        return await this.enviarMensagemInterativaUsandoWhatsappAPI(comparisonMenu);
+    }
+
+    // **NOVO** - Alertas personalizados baseados no perfil
+    async enviarAlertaPersonalizado(numeroCelular, tipoAlerta, dados, perfilUsuario = {}) {
+        const { nivelUsuario, preferencias } = perfilUsuario;
+        let emoji, titulo, mensagem;
+
+        switch (tipoAlerta) {
+            case 'chuva_iminente':
+                emoji = '🌧️';
+                titulo = 'Alerta de Chuva';
+                mensagem = nivelUsuario === 'advanced' ?
+                    `Probabilidade de precipitação >80% nas próximas 2h em ${dados.cidade}. Sistema de baixa pressão aproximando-se.` :
+                    `Vai chover em breve em ${dados.cidade}! Leve guarda-chuva se for sair.`;
+                break;
+
+            case 'temperatura_extrema':
+                emoji = dados.temperatura > 35 ? '🔥' : '🧊';
+                titulo = dados.temperatura > 35 ? 'Calor Extremo' : 'Frio Intenso';
+                mensagem = nivelUsuario === 'advanced' ?
+                    `Temperatura ${dados.temperatura}°C (${dados.temperatura > 35 ? 'acima' : 'abaixo'} da média histórica). Índice UV elevado.` :
+                    `${dados.temperatura > 35 ? 'Muito calor' : 'Muito frio'} hoje em ${dados.cidade}! ${dados.temperatura > 35 ? 'Beba água e procure sombra' : 'Vista-se bem aquecido'}.`;
+                break;
+
+            case 'vento_forte':
+                emoji = '💨';
+                titulo = 'Alerta de Vento';
+                mensagem = `Ventos fortes previstos para ${dados.cidade}. ${nivelUsuario === 'advanced' ? `Velocidade: ${dados.velocidadeVento}km/h.` : 'Cuidado com objetos soltos!'}`;
+                break;
+        }
+
+        const alertMessage = `${emoji} *${titulo}*\n\n${mensagem}\n\n⏰ ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+
+        return await this.enviarMensagemUsandoWhatsappAPI(alertMessage, numeroCelular);
+    }
+
+    // **NOVO** - Resumo semanal inteligente
+    async enviarResumoSemanal(numeroCelular, dadosSemana, nivelUsuario = 'basic') {
+        const { cidade, temperaturaMedia, diasChuva, melhorDia, piorDia } = dadosSemana;
+
+        let resumo = `📊 *Resumo Semanal - ${cidade}*\n\n`;
+
+        if (nivelUsuario === 'basic') {
+            resumo += `🌡️ Temperatura média: ${temperaturaMedia}°C\n`;
+            resumo += `☔ Dias com chuva: ${diasChuva}\n`;
+            resumo += `✨ Melhor dia: ${melhorDia.dia} (${melhorDia.temperatura}°C)\n`;
+            resumo += `😔 Pior dia: ${piorDia.dia} (${piorDia.condicoes})\n\n`;
+            resumo += `💡 *Dica da semana:* ${this.gerarDicaSemanal(dadosSemana)}`;
+        } else if (nivelUsuario === 'intermediate') {
+            resumo += `📈 *Análise da Semana:*\n`;
+            resumo += `• Temperatura: ${temperaturaMedia}°C (variação: ${dadosSemana.variacao}°C)\n`;
+            resumo += `• Precipitação: ${diasChuva} dias, ${dadosSemana.totalChuva}mm\n`;
+            resumo += `• Umidade média: ${dadosSemana.umidadeMedia}%\n\n`;
+            resumo += `🎯 *Tendência:* ${dadosSemana.tendencia}\n`;
+            resumo += `🔮 *Próxima semana:* ${dadosSemana.previsaoProxima}`;
+        } else {
+            resumo += `📊 *Análise Meteorológica Detalhada:*\n\n`;
+            resumo += `🌡️ Temperatura: ${temperaturaMedia}°C (δ: ${dadosSemana.desvio}°C)\n`;
+            resumo += `💧 Precipitação acumulada: ${dadosSemana.totalChuva}mm\n`;
+            resumo += `💨 Vento médio: ${dadosSemana.ventoMedio}km/h\n`;
+            resumo += `🌀 Pressão média: ${dadosSemana.pressaoMedia}hPa\n\n`;
+            resumo += `📈 *Padrões identificados:*\n${dadosSemana.padroes.join('\n')}\n\n`;
+            resumo += `🔬 *Análise sinóptica:* ${dadosSemana.analiseSinoptica}`;
+        }
+
+        return await this.enviarMensagemUsandoWhatsappAPI(resumo, numeroCelular);
+    }
+
+    // **NOVO** - Quiz educativo meteorológico
+    async enviarQuizEducativo(numeroCelular, nivelDificuldade = 'basic') {
+        const quizzes = {
+            basic: {
+                pergunta: "🤔 *Quiz do Clima*\n\nO que causa a chuva?",
+                opcoes: [
+                    { id: "quiz_a", title: "A) Nuvens pesadas" },
+                    { id: "quiz_b", title: "B) Evaporação da água" }, // Correto
+                    { id: "quiz_c", title: "C) Vento forte" }
+                ]
+            },
+            intermediate: {
+                pergunta: "🧠 *Quiz Meteorológico*\n\nQual é a principal causa da formação de ciclones tropicais?",
+                opcoes: [
+                    { id: "quiz_a", title: "A) Temperatura oceânica >26°C" }, // Correto
+                    { id: "quiz_b", title: "B) Ventos alísios" },
+                    { id: "quiz_c", title: "C) Baixa umidade" }
+                ]
+            },
+            advanced: {
+                pergunta: "🎓 *Quiz Avançado*\n\nO efeito Coriolis é mais intenso em qual latitude?",
+                opcoes: [
+                    { id: "quiz_a", title: "A) Equador (0°)" },
+                    { id: "quiz_b", title: "B) Pólos (90°)" }, // Correto
+                    { id: "quiz_c", title: "C) Trópicos (23°)" }
+                ]
+            }
+        };
+
+        const quiz = quizzes[nivelDificuldade];
+
+        const quizMenu = {
+            messaging_product: 'whatsapp',
+            recipient_type: "individual",
+            to: numeroCelular,
+            type: "interactive",
+            interactive: {
+                type: "button",
+                header: {
+                    type: "text",
+                    text: "🎯 Quiz Meteorológico"
+                },
+                body: {
+                    text: quiz.pergunta
+                },
+                action: {
+                    buttons: quiz.opcoes
+                }
+            }
+        };
+
+        return await this.enviarMensagemInterativaUsandoWhatsappAPI(quizMenu);
+    }
+
+    // **NOVO** - Configurações avançadas do usuário
+    async enviarMenuConfiguracaoAvancada(numeroCelular, perfilUsuario = {}) {
+        const { nivelUsuario, preferencias, notificacoes } = perfilUsuario;
+
+        const configMenu = {
+            messaging_product: 'whatsapp',
+            recipient_type: "individual",
+            to: numeroCelular,
+            type: "interactive",
+            interactive: {
+                type: "list",
+                header: {
+                    type: "text",
+                    text: "⚙️ Configurações Avançadas"
+                },
+                body: {
+                    text: "Personalize sua experiência meteorológica:"
+                },
+                footer: {
+                    text: "Selecione uma categoria"
+                },
+                action: {
+                    button: "Configurar",
+                    sections: [
+                        {
+                            title: "Personalização",
+                            rows: [
+                                {
+                                    id: "config_expertise",
+                                    title: "Nível de Expertise",
+                                    description: `Atual: ${nivelUsuario || 'basic'}`
+                                },
+                                {
+                                    id: "config_style",
+                                    title: "Estilo de Resposta",
+                                    description: `Atual: ${preferencias?.estilo || 'casual'}`
+                                },
+                                {
+                                    id: "config_interests",
+                                    title: "Interesses Climáticos",
+                                    description: "Personalizar tópicos"
+                                }
+                            ]
+                        },
+                        {
+                            title: "Notificações Inteligentes",
+                            rows: [
+                                {
+                                    id: "config_alerts",
+                                    title: "Alertas Automáticos",
+                                    description: `${notificacoes?.alertas ? 'Ativado' : 'Desativado'}`
+                                },
+                                {
+                                    id: "config_schedule",
+                                    title: "Horários de Notificação",
+                                    description: `${notificacoes?.horario || '08:00'}`
+                                },
+                                {
+                                    id: "config_frequency",
+                                    title: "Frequência de Resumos",
+                                    description: `${notificacoes?.frequencia || 'Semanal'}`
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        };
+
+        return await this.enviarMensagemInterativaUsandoWhatsappAPI(configMenu);
+    }
+
+    // **UTILITÁRIOS AUXILIARES**
+
+    getContextualDescription(sugestao, contexto) {
+        const { aspectoClima, nivelUsuario } = contexto;
+
+        if (sugestao.includes('previsão')) return 'Ver próximos dias';
+        if (sugestao.includes('comparar')) return 'Análise comparativa';
+        if (sugestao.includes('que é')) return 'Explicação educativa';
+        if (nivelUsuario === 'advanced' && sugestao.includes('análise')) return 'Dados técnicos';
+
+        return 'Informação relacionada';
+    }
+
+    gerarDicaSemanal(dadosSemana) {
+        if (dadosSemana.diasChuva > 3) {
+            return "Semana chuvosa! Tenha sempre guarda-chuva à mão.";
+        } else if (dadosSemana.temperaturaMedia > 30) {
+            return "Semana quente! Mantenha-se hidratado e evite sol das 11h-15h.";
+        } else if (dadosSemana.temperaturaMedia < 20) {
+            return "Semana fresca! Roupas em camadas são uma boa opção.";
+        } else {
+            return "Semana com clima agradável! Aproveite para atividades ao ar livre.";
+        }
+    }
 }
 
 module.exports = WhatsAppApi;

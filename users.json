@@ -1,3 +1,48 @@
 [
-  
+  {
+    "contact": "258846151124",
+    "preferredCity": "beira",
+    "units": "celsius",
+    "language": "pt",
+    "notifications": false,
+    "queryCount": 1,
+    "expertiseLevel": "basic",
+    "preferredComplexity": "basic",
+    "conversationHistory": [
+      {
+        "timestamp": "2025-07-18T16:37:15.036Z",
+        "message": "Hoje vai chover na Beira?",
+        "intent": "previsão",
+        "city": "beira",
+        "type": "weather_data",
+        "expertiseLevel": "basic",
+        "responseLength": 613
+      }
+    ],
+    "lastCity": "beira",
+    "preferredNotificationTime": "08:00",
+    "weatherPreferences": {
+      "aspects": [
+        "temperatura",
+        "chuva"
+      ],
+      "timeframes": [
+        "hoje",
+        "amanha"
+      ],
+      "cities": [
+        {
+          "name": "beira",
+          "count": 1
+        }
+      ]
+    },
+    "profileData": {
+      "age": null,
+      "occupation": null,
+      "interests": []
+    },
+    "last_access": "2025-07-18T16:37:15.033Z",
+    "weatherHistory": []
+  }
 ]
