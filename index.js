@@ -5,15 +5,15 @@ const WhatsAppApi = require("./whatsapp_api/connection");
 const WeatherService = require("./weather_api/weather_service");
 
 const app = express();
-const port = process.env.PORT || 3001;
+const port = process.env.PORT || 3000;
 const filePath = "./users.json";
 
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.json());
 
 // WHATSAPP API Configuration
-const token = process.env.WHATSAPP_TOKEN || "seu_token_aqui";
-const phoneNumberID = process.env.PHONE_NUMBER_ID || "seu_phone_id_aqui";
+const token = process.env.WHATSAPP_TOKEN || "EAALehhs9erIBPBfnvvsnCCXDw7wZCtL4XnmCXZBthQZAXL7PIwVIHVexLVpi67OpzCZBmoFn1qN1IO99H34ZAsXH7scepVDqcb1QiVozsiB7UnSU9hXLSAKroMUZCuNxKfBsGUUxxK8IKkkorKLUGELz63rIYFVoevCKtY9ursPkTJQaRZC4xbhArEXb844zNWhxrO1ZBAveFZA9WVa6Vs9OSihlHpJ4yOf49g78a8sHBLSTQjijk";
+const phoneNumberID = process.env.PHONE_NUMBER_ID || "315122965020635";
 
 // Inicializar serviços
 const whatsappApi = new WhatsAppApi(token, phoneNumberID);
@@ -560,6 +560,61 @@ async function toggleNotifications(phoneNumber, user) {
     `${emoji} Notificações de clima foram ${statusText}!`,
     phoneNumber
   );
+}
+
+// Substituir a função saveOrUpdateUser atual por esta versão para temperatura
+function saveOrUpdateUser(contact, preferredCity, units, language, notifications) {
+  const userIndex = users.findIndex((user) => user.contact === contact);
+
+  if (userIndex !== -1) {
+    // Usuário já existe, apenas atualiza os dados
+    users[userIndex].preferredCity = preferredCity;
+    users[userIndex].units = units; // 'celsius' ou 'fahrenheit'
+    users[userIndex].language = language;
+    users[userIndex].notifications = notifications; // true/false para alertas
+    users[userIndex].last_access = new Date();
+    console.log("Usuário atualizado com sucesso!");
+  } else {
+    // Usuário não existe, adiciona um novo
+    users.push({
+      contact,
+      preferredCity,
+      units: units || 'celsius',
+      language: language || 'pt',
+      notifications: notifications || false,
+      last_access: new Date(),
+      weatherHistory: [] // Histórico de consultas
+    });
+    console.log("Novo usuário salvo com sucesso!");
+  }
+
+  // Salva as alterações no arquivo
+  fs.writeFileSync(filePath, JSON.stringify(users, null, 2));
+}
+
+// Função para salvar histórico de consultas de temperatura
+function saveWeatherHistory(contact, city, temperature, conditions, timestamp) {
+  const userIndex = users.findIndex((user) => user.contact === contact);
+
+  if (userIndex !== -1) {
+    if (!users[userIndex].weatherHistory) {
+      users[userIndex].weatherHistory = [];
+    }
+
+    users[userIndex].weatherHistory.push({
+      city,
+      temperature,
+      conditions,
+      timestamp: timestamp || new Date()
+    });
+
+    // Manter apenas os últimos 10 registros
+    if (users[userIndex].weatherHistory.length > 10) {
+      users[userIndex].weatherHistory = users[userIndex].weatherHistory.slice(-10);
+    }
+
+    fs.writeFileSync(filePath, JSON.stringify(users, null, 2));
+  }
 }
 
 // Processar localização compartilhada

@@ -8,12 +8,12 @@ class WeatherService {
             {
                 name: 'OpenWeatherMap',
                 baseUrl: 'https://api.openweathermap.org/data/2.5',
-                key: process.env.OPENWEATHER_API_KEY || 'sua_chave_aqui'
+                key: process.env.OPENWEATHER_API_KEY || 'c16789aec9a09c7829b25ac6ba1299ab'
             },
             {
                 name: 'WeatherAPI',
                 baseUrl: 'https://api.weatherapi.com/v1',
-                key: process.env.WEATHERAPI_KEY || 'sua_chave_aqui'
+                key: process.env.WEATHERAPI_KEY || '8af38a44fc524c3fbe6104545251807'
             }
         ];
         this.cache = new Map(); // Cache simples
