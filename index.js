@@ -1,63 +1,38 @@
 const express = require("express");
 const fs = require("fs");
-const util = require('util');
 const bodyParser = require("body-parser");
-const axios = require("axios");
 const WhatsAppApi = require("./whatsapp_api/connection");
-const FonteAI = require("./bible_brain_api/ai/fonte_ai");
-// const Translations = require("./translations/translation");
-const filePath = "./users.json";
+const WeatherService = require("./weather_api/weather_service");
 
 const app = express();
 const port = process.env.PORT || 3001;
-const access = fs.createWriteStream('./logs/access.log');
-const error = fs.createWriteStream('./logs/error.log');
+const filePath = "./users.json";
+
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
+// WHATSAPP API Configuration
+const token = process.env.WHATSAPP_TOKEN || "seu_token_aqui";
+const phoneNumberID = process.env.PHONE_NUMBER_ID || "seu_phone_id_aqui";
 
-//WHATSAPP API-JURIS
-const token =
-  "EAAIpbaLwXWQBOZBcTQDyZB8Y115ucow04XzRxZBrBrfmVCfSgutzXsc3ZCJeaqz1ZC1AdZCc0ZAZAxPQ0Ka9n6uoTAQNXJ2a1uSTHEJUZC2hHH2XGmjmegwPs2QMD9ZA80nsErJk9iFIx3h6smlDBlFivkWZBfrkVwQOo2Sjbw5reyPGWlUww4lw2ZCgxDi1En15S7FT3wZDZD";
-const phoneNumberID = "527203823817674";
-
-//BIBLE API
-const API_BASE_URL = "https://4.dbt.io/api/bibles/filesets";
-const API_KEY_BIBLE = "68f5c563-ead2-4e92-92f1-709e8c331b6e";
-const API_VERSION = "4";
-//FIM
-
-// -------------- FONTE AI
-const API_BASE_URL_FONTE_AI = "http://localhost:11434/api/generate";
-const MODEL = "fdv04:latest";
-const STREAM = false;
-// -------------- FIM FONTE AI
-
-// -------------- Configuracao de Classes por exportas
+// Inicializar serviços
 const whatsappApi = new WhatsAppApi(token, phoneNumberID);
-const fonteAI = new FonteAI(API_BASE_URL_FONTE_AI, MODEL, STREAM);
+const weatherService = new WeatherService();
 
-
-
-// -------------- Fim configuracao de classes exportas
-
-//Configuracao de leitura de arquivos
-
+// Comandos disponíveis
 const optionsCases = [
-  // "O que é Fonte da Vida Bot?",
-  // "/informacoes",
-  // "Como receber versículos em aúdio?",
-  // "Como escolher língua?",
-  // "escolher_lingua",
-  "/como_funciona",
-  "/escolher_lingua",
-  "Choose Language",
-  "Escolher Língua",
-  // "/chat"
+  "/clima",
+  "/previsao",
+  "/configurar",
+  "/ajuda",
+  "/historico",
+  "Climate",
+  "Forecast",
+  "Settings",
+  "Help"
 ];
 
-// Carrega os usuários na inicialização do servidor
+// Carregar usuários
 let users = [];
 if (fs.existsSync(filePath)) {
   const data = fs.readFileSync(filePath, "utf-8");
@@ -66,62 +41,32 @@ if (fs.existsSync(filePath)) {
   }
 }
 
-// Função para buscar um usuário pelo número de telefone
 function getUserByContact(contact) {
   return users.find((user) => user.contact === contact);
 }
-// Função para salvar ou atualizar um usuário
 
-function saveOrUpdateUser(contact, language_name, code, prefix, chat) {
-  const userIndex = users.findIndex((user) => user.contact === contact);
-
-  if (userIndex !== -1) {
-    // Usuário já existe, apenas atualiza os dados
-    users[userIndex].language_name = language_name;
-    users[userIndex].code = code;
-    users[userIndex].prefix = prefix;
-    users[userIndex].last_access = new Date();
-    users[userIndex].chat = chat;
-    console.log("Usuário atualizado com sucesso!");
-  } else {
-    // Usuário não existe, adiciona um novo
-    users.push({ contact, language_name, code, prefix, last_access: new Date(), chat });
-    console.log("Novo usuário salvo com sucesso!");
-  }
-
-
-  // Salva as alterações no arquivo
-  fs.writeFileSync(filePath, JSON.stringify(users, null, 2));
-}
-
-// -------------- Fim configuracao de leitura de arquivos
-
-
-// -------------- Rotas de conexoes com o WhatsApp API
+// Webhook routes
 app.get("/webhook", async (req, res) => {
-  console.log("Estabelecendo conexção com o Webhook! ");
+  console.log("Estabelecendo conexão com o Webhook! ");
   let mode = req.query["hub.mode"];
-  let challange = req.query["hub.challenge"];
+  let challenge = req.query["hub.challenge"];
   let token = req.query["hub.verify_token"];
-  const mytoken = "FONTEEQUIP";
+  const mytoken = "TEMPBOT2024";
+
   if (mode && token) {
     if (mode === "subscribe" && token === mytoken) {
       console.log("Conexão estabelecida com sucesso!")
-      res.status(200).send(challange);
+      res.status(200).send(challenge);
     } else {
-      console.log("Ocorreu um erro ao estabelecer a conexão com o Webhook!")
-      res.status(403);
+      console.log("Erro ao estabelecer conexão!")
+      res.status(403).send();
     }
   }
 });
 
-//Get fuction route than retorn a text Ola Mundo
-app.get("/test", async (req, res) => {
-  res.send("Ola Mundo " + new Date().toLocaleString());
-});
-
 app.post("/webhook", async (req, res) => {
   const body = req.body;
+
   if (body.object === "whatsapp_business_account") {
     const entry = body.entry[0];
     const change = entry.changes[0];
@@ -129,448 +74,572 @@ app.post("/webhook", async (req, res) => {
     if (change.field === "messages" && change?.value?.messages?.length > 0) {
       const message = change.value.messages[0];
       const remetenteFile = message.from;
-      console.log("Mensagem", message, remetenteFile);
 
-      // Processando a saudação inicial
-      if (message?.type === "request_welcome") {
-        res.sendStatus(200);
-        return;
-      }
+      console.log("Mensagem recebida:", message);
 
-      // Processando a resposta interativa (escolha de idioma)
-      if (message?.type === "interactive") {
-        const idInterative = message?.interactive?.list_reply?.id;
-        if (idInterative.split("&")[0] == "l") {
-          await saveOrUpdateUser(remetenteFile, idInterative.split("&")[2], idInterative.split("&")[1], idInterative.split("&")[3], false);
-
-          console.log("Idioma escolhido: ", idInterative.split("&")[1], idInterative);
-
-          const user = getUserByContact(remetenteFile);
-          whatsappApi.enviarMensagemUsandoWhatsappAPI(
-            `${transalations.translate(user.language_name, 'you_choose')} ${idInterative.split("&")[2]}. ${transalations.translate(user.language_name, 'fist_message_example')}`,
-            remetenteFile
-          );
-        }
-        res.sendStatus(200);
-        return;
-      }
-
-      // Processando a mensagem de texto
+      // Processar diferentes tipos de mensagem
       if (message?.type === "text") {
-        const user = getUserByContact(remetenteFile); // Verificando se o usuário já tem idioma
-        console.log("Teste ", user)
-        if (optionsCases.includes(message.text.body)) {
-          const resp = await processMessage(message.text.body, remetenteFile, user);
-          if (resp) {
-            res.sendStatus(200);
-            return;
-          }
-        }
-
-        else {
-          const aiProcessed = await processWithAI(message.text.body, remetenteFile, user);
-          if (aiProcessed) {
-            res.sendStatus(200);
-            return;
-          }
-
-          // Fallback 
-          const texto = removerAcentos(message.text.body).toLowerCase();
-          const [livro, capitulo] = texto.split(" ");
-          console.log("Fallback:", livro, capitulo);
-          sendAudio(texto, remetenteFile, user.code, user.prefix, user);
-          res.sendStatus(200);
-          return;
-        }
-        // else {
-        //   const name = user
-        //   // Se o usuário não escolheu o idioma, pede para escolher
-        //   sendMessageUsingWhatsappAPI(
-        //     `${transalations.translate(user?.language_name ? user.language_name : 'Portugues', 'please_select_language_error')}`,
-        //     remetenteFile
-        //   );
-
-        //   sendInterativeMessagesInParts(remetenteFile, user?.language_name ? user.language_name : 'Portugues'); // Envia as opções de idioma
-        //   res.sendStatus(200); // Finaliza a resposta para evitar loop
-        // }
-        try {
-          res.sendStatus(200)
-        } catch (error) {
-          console.log("Status já enviado...")
-        }
-
-        return
+        await processTextMessage(message.text.body, remetenteFile);
+      } else if (message?.type === "interactive") {
+        await processInteractiveMessage(message.interactive, remetenteFile);
+      } else if (message?.type === "location") {
+        await processLocationMessage(message.location, remetenteFile);
       }
-    } else {
-      res.sendStatus(200);
     }
-  } else {
-    res.sendStatus(404);
   }
+
+  res.sendStatus(200);
 });
 
-// --------------- Funcoes de Ajuda
-function removerNumerosDepoisDaPalavra(input) {
-  return input.replace(/\b(\w+)\s*\d+\b/g, "$1");
-}
+// Processamento de mensagens de texto
+async function processTextMessage(messageText, phoneNumber) {
+  const user = getUserByContact(phoneNumber);
+  const language = user?.language || 'pt';
 
-function extrairNumerosDepoisDaPalavra(input) {
-  const match = input.match(/\b\w+\s+(\d+)\b/);
-  return match ? match[1] : null;
-}
-
-function removerAcentos(texto) {
-  return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-}
-// --------------- Fim Funcoes de Ajuda
-
-// --------------- Funcao de armazenamento de dados de usario
-
-// function saveUser(contact, language) {
-//   const users = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-//   users.push({ contact, language, last_access: new Date() });
-//   fs.writeFileSync(filePath, JSON.stringify(users, null, 2));
-//   console.log("Usuário salvo com sucesso!");
-// }
-
-async function sendAiAnswer(message, remetenteFile) {
-  sendMessageUsingWhatsappAPI(
-    `...`,
-    remetenteFile)
-
-  const resAi = await fonteAI.aIAnswer(message);
-
-  console.log("Resposta AI ", resAi.response);
-  sendMessageUsingWhatsappAPI(resAi.response, remetenteFile)
-  return
-}
-
-// Enviar audio para utilizador, preparado pela AI
-async function sendAudio(bookName, phoneNumber, abbr, prefix, user, bookId = null, chapter = null) {
-
-  if (bookId && chapter) {
-    const res = await bibleAPI.audioBible.buscarAudioV2(abbr, bookId, chapter, prefix);
-    console.log("Res... ", res);
-
-    const urlLink = res?.data ? res?.data[0] : undefined;
-    if (urlLink) {
-      await sendMessageUsingWhatsappAPI(
-        `${transalations.translate(user.language_name, 'processing_audio')}`,
-        phoneNumber
-      );
-      await whatsappApi.enviarMensagemComAudioUsandoWhatsappAPI(
-        bookName, phoneNumber, urlLink?.path
-      );
-    } else {
-      await sendMessageUsingWhatsappAPI(
-        `${transalations.translate(user.language_name, 'error_geting_audio')}`,
-        phoneNumber
-      );
-    }
+  // Comandos específicos
+  if (optionsCases.includes(messageText)) {
+    await processCommand(messageText, phoneNumber, user);
     return;
   }
 
-  const extractedBooKName = await removerNumerosDepoisDaPalavra(bookName);
-  const bookDetails = booksProcessor.searchBookByName(extractedBooKName);
-  const number = extrairNumerosDepoisDaPalavra(bookName);
+  // Tentar interpretar como consulta de clima
+  if (await isWeatherQuery(messageText)) {
+    await processWeatherQuery(messageText, phoneNumber, user);
+    return;
+  }
 
-  const res = await bibleAPI.audioBible.buscarAudioV2(
-    abbr,
-    bookDetails?.book_id,
-    number,
-    prefix
-  );
-  console.log("Res ", res);
-  const urlLink = res?.data ? res?.data[0] : undefined;
-  if (res === false) {
-    sendMessageUsingWhatsappAPI(
-      `${transalations.translate(user.language_name, 'error_geting_audio')}`,
-      phoneNumber
-    )
-
-    sendMessageUsingWhatsappAPI(
-      `${transalations.translate(user.language_name, 'message_about_fdv')}`,
-      phoneNumber
-    )
-  }
-  if (urlLink) {
-    await sendMessageUsingWhatsappAPI(
-      `${transalations.translate(user.language_name, 'processing_audio')}`,
-      phoneNumber)
-    await whatsappApi.enviarMensagemComAudioUsandoWhatsappAPI(
-      bookName,
-      phoneNumber,
-      urlLink?.path
-    );
-  }
-  else {
-    console.log("Erro ao buscar o audio");
-  }
+  // Mensagem padrão de ajuda
+  await sendHelpMessage(phoneNumber, language);
 }
 
-async function sendAudioOld(bookName, phoneNumber, abbr, prefix, user) {
-  // const bookName = "Lucas 5"; // Exemplo com erro de digitação
-  const extractedBooKName = await removerNumerosDepoisDaPalavra(bookName);
-  const bookDetails = booksProcessor.searchBookByName(extractedBooKName);
+// Verificar se é uma consulta de clima
+async function isWeatherQuery(message) {
+  const weatherKeywords = [
+    'clima', 'temperatura', 'tempo', 'weather', 'temperature',
+    'graus', 'quente', 'frio', 'chuva', 'sol'
+  ];
 
-  const number = extrairNumerosDepoisDaPalavra(bookName);
-
-  const res = await bibleAPI.audioBible.buscarAudioV2(
-    abbr,
-    bookDetails?.book_id,
-    number,
-    prefix
-  );
-  console.log("Res ", res);
-  const urlLink = res?.data ? res?.data[0] : undefined;
-  if (res === false) {
-    sendMessageUsingWhatsappAPI(
-      `${transalations.translate(user.language_name, 'error_geting_audio')}`,
-      phoneNumber
-    )
-
-    // await sendMessageUsingWhatsappAPI(
-    //   `...`,
-    //   phoneNumber)
-
-    // fonteAI.aIAnswer(bookName).then((res) => {
-    //   console.log("Resposta AI ", res.response);
-    //   sendMessageUsingWhatsappAPI(res.response, phoneNumber)
-    // })
-    sendMessageUsingWhatsappAPI(
-      `${transalations.translate(user.language_name, 'message_about_fdv')}`,
-      phoneNumber
-    )
-  }
-  if (urlLink) {
-    await sendMessageUsingWhatsappAPI(
-      `${transalations.translate(user.language_name, 'processing_audio')}`,
-      phoneNumber)
-    await whatsappApi.enviarMensagemComAudioUsandoWhatsappAPI(
-      bookName,
-      phoneNumber,
-      urlLink?.path
-    );
-  }
-  else {
-    console.log("Erro ao buscar o audio");
-  }
-}
-
-function getAllLanguageByCountry(coutry, page, limit) {
-  bibleAPI.languageBible.buscarLinguasGerias(
-    coutry ? coutry : "MZ",
-    page ? page : 1,
-    limit ? limit : 10
+  return weatherKeywords.some(keyword =>
+    message.toLowerCase().includes(keyword)
   );
 }
 
-function getAllLanguage() {
-  bibleAPI.languageBible.buscarLinguasGerias();
-}
-
-function sendInterativeMessagesInParts(phoneNumber, language_name) {
-  whatsappApi.enviarLinguasPorPartes(
-    myLanguages,
-    phoneNumber ? phoneNumber : "846151124",
-    language_name
-  );
-}
-
-async function sendMessageUsingWhatsappAPI(message, phoneNumber) {
-  whatsappApi.enviarMensagemUsandoWhatsappAPI(
-    message ? message : "Ola......",
-    phoneNumber ? phoneNumber : "846151124"
-  );
-}
-
-function isAudioRequest(message) {
+// Processar consulta de temperatura
+async function processWeatherQuery(message, phoneNumber, user) {
   try {
-    const data = JSON.parse(message);
-    return data.type === "audio_request";
-  } catch (e) {
-    // Se não for JSON válido, retorna false
-    return false;
-  }
-}
+    // Extrair nome da cidade da mensagem
+    let cityName = extractCityFromMessage(message, user);
 
-
-// -------------
-async function processWithAI(message, remetenteFile, user) {
-  try {
-    const aiResponse = await fonteAI.aIAnswer(message);
-    const isAudio = isAudioRequest(aiResponse.response);
-    if (isAudio) {
-      console.log("🎧 Audio request detected");
-      if (isAudio.type === "audio_request") {
-        console.log("🎧 audio_request detectado");
-
-        if (isAudio.message) {
-          await sendMessageUsingWhatsappAPI(isAudio.message, remetenteFile);
-        }
-
-        await sendAudio(
-          `${isAudio.book_name} ${isAudio.chapter}`,
-          remetenteFile,
-          user.code,
-          user.prefix,
-          user,
-          isAudio.book_id,
-          isAudio.chapter
-        );
-        return true;
-      }
+    if (!cityName) {
+      await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+        "Por favor, me informe o nome da cidade. Exemplo: 'Clima em Maputo'",
+        phoneNumber
+      );
+      return;
     }
 
-    // Tenta fazer parse como JSON
-    try {
-      let jsonString = aiResponse.response;  // ← AQUI ESTÁ CERTO
-      console.log("🔍 Resposta original:", jsonString);
+    // Buscar informações do clima
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      "🔍 Buscando informações do clima...",
+      phoneNumber
+    );
 
-      if (jsonString.includes('```json')) {
-        jsonString = jsonString.replace(/```json\n?/g, '').replace(/\n?```/g, '').trim();
-        console.log("🧹 JSON limpo:", jsonString);
-      }
+    const weatherData = await weatherService.getCurrentWeather(
+      cityName,
+      user?.units || 'celsius'
+    );
 
+    // Salvar no histórico
+    saveWeatherHistory(
+      phoneNumber,
+      weatherData.city,
+      weatherData.temperature,
+      weatherData.description
+    );
 
-      const parsed = JSON.parse(jsonString);
-      console.log("✅ JSON parseado:", parsed);
+    // Enviar resposta formatada
+    const weatherMessage = formatWeatherMessage(weatherData);
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      weatherMessage,
+      phoneNumber
+    );
 
-      if (parsed.type === "audio_request") {
-        console.log("🎧 audio_request detectado");
-
-        if (parsed.message) {
-          await sendMessageUsingWhatsappAPI(parsed.message, remetenteFile);
-        }
-
-        await sendAudio(
-          `${parsed.book_name} ${parsed.chapter}`,
-          remetenteFile,
-          user.code,
-          user.prefix,
-          user,
-          parsed.book_id,
-          parsed.chapter
-        );
-        return true;
-      }
-    } catch (parseError) {
-      console.log("❌ Parse error:", parseError.message);
-      // Não é JSON, resposta conversacional
-    }
-
-    // Resposta normal
-    await sendMessageUsingWhatsappAPI(aiResponse.response, remetenteFile);
-    return true;
+    // Oferecer previsão
+    await offerForecast(phoneNumber, cityName);
 
   } catch (error) {
-    console.error("Erro geral:", error);
-    return false;
+    console.error("Erro ao buscar clima:", error);
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      "❌ Desculpe, não consegui encontrar informações do clima para essa cidade. Verifique o nome e tente novamente.",
+      phoneNumber
+    );
   }
 }
 
-// -------------
-function processMessage(message, remetente, user) {
-  console.log(message, remetente, user)
-  const language = user?.language_name ? user.language_name : "Portugues"
-  switch (message) {
-    case "O que é Fonte da Vida Bot?":
-      sendMessageUsingWhatsappAPI(
-        `${transalations.translate(language, 'message_about_fdv')}`,
-        remetente
-      );
-      return true;
-    case "/informacoes":
-      sendMessageUsingWhatsappAPI(
-        `${transalations.translate(language, 'info_fdv')}`,
-        remetente
-      );
-      return true;
-    case "Como receber versículos em aúdio?":
-      sendMessageUsingWhatsappAPI(
-        `${transalations.translate(language, 'how_to_receive_audio')}`,
-        remetente
-      );
-      return true;
-    case "Escolher Língua":
-      sendInterativeMessagesInParts(remetente, "Portugues");
-      return true;
-    case "escolher_lingua":
-      sendInterativeMessagesInParts(remetente, language);
-      return true;
-    case "Choose Language":
-      sendInterativeMessagesInParts(remetente, "English");
-      return true;
-    case "/como_funciona":
-      sendMessageUsingWhatsappAPI(
-        `${transalations.translate(language, 'how_fdv_works')}`,
-        remetente
-      );
-      return true;
-    case "/escolher_lingua":
-      sendInterativeMessagesInParts(remetente, language);
-      return true;
-    // case "/chat":
-    //   const user = getUserByContact(remetente);
-    //   if (user && user.chat) {
-    //     const chat_ative = user.chat ? "chat_deactivated" : "chat_ativated"
-    //     sendMessageUsingWhatsappAPI(
-    //       `${transalations.translate(language, chat_ative)}`,
-    //       remetente
-    //     );
-    //     saveOrUpdateUser(remetente, "Portugues", "PORBSP", "N2DA", !user.chat);
-    //   }
-    //   else {
-    //     sendMessageUsingWhatsappAPI(
-    //       `${transalations.translate(language, 'chat_ativated')}`,
-    //       remetente
-    //     );
-    //     saveOrUpdateUser(remetente, "Portugues", "PORBSP", "N2DA", true);
-    //   }
+// Extrair cidade da mensagem
+function extractCityFromMessage(message, user) {
+  // Remover palavras-chave comuns
+  const cleanMessage = message
+    .toLowerCase()
+    .replace(/clima|temperatura|tempo|weather|em|in|de|do|da/g, '')
+    .trim();
 
-    //   return true;
+  // Se não conseguir extrair e o usuário tem cidade preferida
+  if (!cleanMessage && user?.preferredCity) {
+    return user.preferredCity;
+  }
+
+  return cleanMessage || null;
+}
+
+// Formatar mensagem do clima
+function formatWeatherMessage(data) {
+  const emoji = getWeatherEmoji(data.description);
+
+  return `${emoji} *Clima em ${data.city}, ${data.country}*\n\n` +
+    `🌡️ *Temperatura:* ${data.temperature}${data.units}\n` +
+    `🤲 *Sensação térmica:* ${data.feelsLike}${data.units}\n` +
+    `💧 *Umidade:* ${data.humidity}%\n` +
+    `📝 *Condições:* ${data.description}\n\n` +
+    `_Dados fornecidos por ${data.source}_`;
+}
+
+// Emojis baseados na descrição do clima
+function getWeatherEmoji(description) {
+  const desc = description.toLowerCase();
+
+  if (desc.includes('sol') || desc.includes('clear')) return '☀️';
+  if (desc.includes('chuva') || desc.includes('rain')) return '🌧️';
+  if (desc.includes('nuvem') || desc.includes('cloud')) return '☁️';
+  if (desc.includes('neve') || desc.includes('snow')) return '❄️';
+  if (desc.includes('tempest') || desc.includes('storm')) return '⛈️';
+
+  return '🌤️';
+}
+
+// Oferecer previsão do tempo
+async function offerForecast(phoneNumber, city) {
+  const forecastOffer = {
+    messaging_product: 'whatsapp',
+    recipient_type: "individual",
+    to: phoneNumber,
+    type: "interactive",
+    interactive: {
+      type: "button",
+      header: {
+        type: "text",
+        text: "Previsão do Tempo"
+      },
+      body: {
+        text: `Deseja ver a previsão dos próximos dias para ${city}?`
+      },
+      action: {
+        buttons: [
+          {
+            type: "reply",
+            reply: {
+              id: `forecast_${city}`,
+              title: "Ver Previsão"
+            }
+          },
+          {
+            type: "reply",
+            reply: {
+              id: "no_forecast",
+              title: "Não, obrigado"
+            }
+          }
+        ]
+      }
+    }
+  };
+
+  await whatsappApi.enviarMensagemInterativaUsandoWhatsappAPI(forecastOffer);
+}
+
+// Processar comandos específicos
+async function processCommand(command, phoneNumber, user) {
+  switch (command) {
+    case "/ajuda":
+    case "Help":
+      await sendHelpMessage(phoneNumber, user?.language || 'pt');
+      break;
+
+    case "/configurar":
+    case "Settings":
+      await sendSettingsMenu(phoneNumber);
+      break;
+
+    case "/historico":
+      await sendWeatherHistory(phoneNumber, user);
+      break;
+
     default:
-      return false;
+      await sendHelpMessage(phoneNumber, user?.language || 'pt');
   }
 }
-// -------------
 
-// Funcionalidade de Proxy
-// Rota para retransmitir o áudio
-app.get('/proxy-audio', async (req, res) => {
-  const audioUrl = req.query.url; // O link do áudio será enviado como query param
-  if (!audioUrl) {
-    return res.status(400).send('URL do áudio não fornecida.');
-  }
-  try {
-    const response = await axios.get(audioUrl, { responseType: 'stream' });
-    res.setHeader('Content-Type', 'audio/mpeg');
-    response.data.pipe(res);
-  } catch (error) {
-    console.error('Erro no proxy:', error.message);
-    res.status(500).send('Erro ao acessar o áudio.');
-  }
-});
-// Fim
+// Enviar mensagem de ajuda
+async function sendHelpMessage(phoneNumber, language = 'pt') {
+  const helpMessage = language === 'pt' ?
+    `🤖 *Bot de Temperatura - Ajuda*\n\n` +
+    `📋 *Comandos disponíveis:*\n` +
+    `• Digite o nome de uma cidade para ver o clima\n` +
+    `• /clima - Clima da sua cidade preferida\n` +
+    `• /previsao - Previsão de 7 dias\n` +
+    `• /configurar - Configurações pessoais\n` +
+    `• /historico - Suas consultas recentes\n\n` +
+    `💡 *Exemplos:*\n` +
+    `• "Clima em Maputo"\n` +
+    `• "Temperatura Beira"\n` +
+    `• "Tempo em Lisboa"`
+    :
+    `🤖 *Temperature Bot - Help*\n\n` +
+    `📋 *Available commands:*\n` +
+    `• Type a city name to see weather\n` +
+    `• /climate - Weather for your preferred city\n` +
+    `• /forecast - 7-day forecast\n` +
+    `• /settings - Personal settings\n\n` +
+    `💡 *Examples:*\n` +
+    `• "Weather in Maputo"\n` +
+    `• "Temperature Beira"`;
 
-// --------------- Fim Funcao de armazenamento de dados de usario
-app.listen(port, async () => {
-  console.log(process.env.PORT)
-  console.log(
-    "Servidor rodando em http://localhost:" + port,
-    new Date().toLocaleString()
+  await whatsappApi.enviarMensagemUsandoWhatsappAPI(helpMessage, phoneNumber);
+}
+
+// Adicionar estas funções ao arquivo index.js
+
+// Menu de configurações interativo
+async function sendSettingsMenu(phoneNumber) {
+  const user = getUserByContact(phoneNumber);
+
+  const settingsMenu = {
+    messaging_product: 'whatsapp',
+    recipient_type: "individual",
+    to: phoneNumber,
+    type: "interactive",
+    interactive: {
+      type: "list",
+      header: {
+        type: "text",
+        text: "⚙️ Configurações"
+      },
+      body: {
+        text: "Configure suas preferências do bot de temperatura:"
+      },
+      footer: {
+        text: "Selecione uma opção"
+      },
+      action: {
+        button: "Configurar",
+        sections: [
+          {
+            title: "Preferências Gerais",
+            rows: [
+              {
+                id: "set_city",
+                title: "Cidade Padrão",
+                description: `Atual: ${user?.preferredCity || 'Não definida'}`
+              },
+              {
+                id: "set_units",
+                title: "Unidade de Temperatura",
+                description: `Atual: ${user?.units === 'fahrenheit' ? 'Fahrenheit' : 'Celsius'}`
+              },
+              {
+                id: "set_language",
+                title: "Idioma",
+                description: `Atual: ${user?.language === 'en' ? 'English' : 'Português'}`
+              }
+            ]
+          },
+          {
+            title: "Notificações",
+            rows: [
+              {
+                id: "toggle_notifications",
+                title: "Alertas de Clima",
+                description: `${user?.notifications ? 'Ativado' : 'Desativado'}`
+              }
+            ]
+          }
+        ]
+      }
+    }
+  };
+
+  await whatsappApi.enviarMensagemInterativaUsandoWhatsappAPI(settingsMenu);
+}
+
+// Processar respostas interativas
+async function processInteractiveMessage(interactive, phoneNumber) {
+  const user = getUserByContact(phoneNumber);
+
+  if (interactive.type === "list_reply") {
+    const optionId = interactive.list_reply.id;
+
+    switch (optionId) {
+      case "set_city":
+        await requestCitySelection(phoneNumber);
+        break;
+
+      case "set_units":
+        await sendUnitsMenu(phoneNumber);
+        break;
+
+      case "set_language":
+        await sendLanguageMenu(phoneNumber);
+        break;
+
+      case "toggle_notifications":
+        await toggleNotifications(phoneNumber, user);
+        break;
+
+      default:
+        if (optionId.startsWith("forecast_")) {
+          const city = optionId.replace("forecast_", "");
+          await sendWeatherForecast(phoneNumber, city, user);
+        }
+        break;
+    }
+  }
+
+  if (interactive.type === "button_reply") {
+    const buttonId = interactive.button_reply.id;
+
+    if (buttonId.startsWith("forecast_")) {
+      const city = buttonId.replace("forecast_", "");
+      await sendWeatherForecast(phoneNumber, city, user);
+    } else if (buttonId === "no_forecast") {
+      await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+        "👍 Perfeito! Se precisar de mais informações, é só perguntar.",
+        phoneNumber
+      );
+    }
+  }
+}
+
+// Solicitar seleção de cidade
+async function requestCitySelection(phoneNumber) {
+  await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+    "🏙️ *Definir Cidade Padrão*\n\n" +
+    "Digite o nome da cidade que você gostaria de definir como padrão.\n" +
+    "Exemplo: Maputo, Beira, Lisboa, etc.\n\n" +
+    "_Digite 'cancelar' para voltar ao menu._",
+    phoneNumber
   );
-  // sendInterativeMessagesInParts("846151124");
-  // sendMessageUsingWhatsappAPI();
 
-  // whatsappApi.enviarMensagemUsandoTemplateWhatsappAPI(
-  //   'start_point_en',
-  //   '846151124',
-  //   'en_US'
-  // )
-  // fonteAI.aIAnswer("Ola").then((res) => {
-  //   console.log("Resposta AI ", res.response);
-  //   sendMessageUsingWhatsappAPI(res.response, '846151124')
-  // }
-  // );
+  // Marcar usuário como aguardando cidade
+  const userIndex = users.findIndex(u => u.contact === phoneNumber);
+  if (userIndex !== -1) {
+    users[userIndex].awaitingCity = true;
+    fs.writeFileSync(filePath, JSON.stringify(users, null, 2));
+  }
+}
+
+// Menu de unidades de temperatura
+async function sendUnitsMenu(phoneNumber) {
+  const unitsMenu = {
+    messaging_product: 'whatsapp',
+    recipient_type: "individual",
+    to: phoneNumber,
+    type: "interactive",
+    interactive: {
+      type: "button",
+      header: {
+        type: "text",
+        text: "🌡️ Unidade de Temperatura"
+      },
+      body: {
+        text: "Escolha sua unidade de temperatura preferida:"
+      },
+      action: {
+        buttons: [
+          {
+            type: "reply",
+            reply: {
+              id: "units_celsius",
+              title: "Celsius (°C)"
+            }
+          },
+          {
+            type: "reply",
+            reply: {
+              id: "units_fahrenheit",
+              title: "Fahrenheit (°F)"
+            }
+          }
+        ]
+      }
+    }
+  };
+
+  await whatsappApi.enviarMensagemInterativaUsandoWhatsappAPI(unitsMenu);
+}
+
+// Enviar previsão do tempo
+async function sendWeatherForecast(phoneNumber, city, user) {
+  try {
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      "🔍 Buscando previsão do tempo...",
+      phoneNumber
+    );
+
+    const forecast = await weatherService.getWeatherForecast(city, 7);
+
+    let forecastMessage = `📅 *Previsão de 7 dias - ${city}*\n\n`;
+
+    forecast.forEach((day, index) => {
+      const date = new Date(day.date);
+      const dayName = index === 0 ? 'Hoje' :
+        index === 1 ? 'Amanhã' :
+          date.toLocaleDateString('pt-BR', { weekday: 'short' });
+
+      const emoji = getWeatherEmoji(day.description);
+
+      forecastMessage += `${emoji} *${dayName}* (${date.toLocaleDateString('pt-BR', { month: 'short', day: 'numeric' })})\n`;
+      forecastMessage += `   ${day.minTemp}° - ${day.maxTemp}° | ${day.description}\n\n`;
+    });
+
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      forecastMessage,
+      phoneNumber
+    );
+
+  } catch (error) {
+    console.error("Erro ao buscar previsão:", error);
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      "❌ Não foi possível obter a previsão do tempo. Tente novamente mais tarde.",
+      phoneNumber
+    );
+  }
+}
+
+// Enviar histórico do usuário
+async function sendWeatherHistory(phoneNumber, user) {
+  if (!user || !user.weatherHistory || user.weatherHistory.length === 0) {
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      "📝 Você ainda não fez consultas de clima. Digite o nome de uma cidade para começar!",
+      phoneNumber
+    );
+    return;
+  }
+
+  let historyMessage = "📚 *Histórico de Consultas*\n\n";
+
+  user.weatherHistory.slice(-5).reverse().forEach((entry, index) => {
+    const date = new Date(entry.timestamp);
+    const emoji = getWeatherEmoji(entry.conditions);
+
+    historyMessage += `${emoji} *${entry.city}*\n`;
+    historyMessage += `   ${entry.temperature}°C | ${entry.conditions}\n`;
+    historyMessage += `   ${date.toLocaleDateString('pt-BR')} às ${date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}\n\n`;
+  });
+
+  await whatsappApi.enviarMensagemUsandoWhatsappAPI(historyMessage, phoneNumber);
+}
+
+// Alternar notificações
+async function toggleNotifications(phoneNumber, user) {
+  const currentStatus = user?.notifications || false;
+  const newStatus = !currentStatus;
+
+  // Atualizar usuário
+  saveOrUpdateUser(
+    phoneNumber,
+    user?.preferredCity,
+    user?.units,
+    user?.language,
+    newStatus
+  );
+
+  const statusText = newStatus ? 'ativadas' : 'desativadas';
+  const emoji = newStatus ? '🔔' : '🔕';
+
+  await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+    `${emoji} Notificações de clima foram ${statusText}!`,
+    phoneNumber
+  );
+}
+
+// Processar localização compartilhada
+async function processLocationMessage(location, phoneNumber) {
+  try {
+    const { latitude, longitude } = location;
+
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      "📍 Localização recebida! Buscando clima da sua região...",
+      phoneNumber
+    );
+
+    // Usar coordenadas para buscar clima
+    const weatherData = await weatherService.getCurrentWeather(
+      `${latitude},${longitude}`,
+      getUserByContact(phoneNumber)?.units || 'celsius'
+    );
+
+    const weatherMessage = formatWeatherMessage(weatherData);
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      weatherMessage,
+      phoneNumber
+    );
+
+  } catch (error) {
+    console.error("Erro ao processar localização:", error);
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      "❌ Não foi possível obter o clima da sua localização. Tente enviar o nome da cidade.",
+      phoneNumber
+    );
+  }
+}
+
+// Verificar se usuário está aguardando entrada de cidade
+function checkAwaitingCityInput(message, phoneNumber) {
+  const user = getUserByContact(phoneNumber);
+
+  if (user?.awaitingCity) {
+    if (message.toLowerCase() === 'cancelar') {
+      // Cancelar operação
+      const userIndex = users.findIndex(u => u.contact === phoneNumber);
+      if (userIndex !== -1) {
+        delete users[userIndex].awaitingCity;
+        fs.writeFileSync(filePath, JSON.stringify(users, null, 2));
+      }
+
+      whatsappApi.enviarMensagemUsandoWhatsappAPI(
+        "❌ Operação cancelada.",
+        phoneNumber
+      );
+      return true;
+    }
+
+    // Salvar cidade e confirmar
+    saveOrUpdateUser(
+      phoneNumber,
+      message,
+      user.units,
+      user.language,
+      user.notifications
+    );
+
+    // Remover flag de aguardando
+    const userIndex = users.findIndex(u => u.contact === phoneNumber);
+    if (userIndex !== -1) {
+      delete users[userIndex].awaitingCity;
+      fs.writeFileSync(filePath, JSON.stringify(users, null, 2));
+    }
+
+    whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      `✅ Cidade padrão definida como: *${message}*\n\nAgora você pode usar /clima para ver o tempo da sua cidade.`,
+      phoneNumber
+    );
+    return true;
+  }
+
+  return false;
+}
+
+app.listen(port, () => {
+  console.log(`🌡️ Temperature Bot running on port ${port}`);
+  console.log(`📅 Started at: ${new Date().toLocaleString()}`);
 });
