@@ -114,13 +114,269 @@ app.post("/webhook", async (req, res) => {
 });
 
 // Processamento de mensagens de texto
+// SUBSTITUIR a função processTextMessage() atual no index.js por esta:
+
 async function processTextMessage(messageText, phoneNumber) {
   const user = getUserByContact(phoneNumber);
+
+  // 🧠 NOVA LÓGICA: IA analisa tudo primeiro
+  try {
+    console.log(`🤖 Analisando mensagem: "${messageText}"`);
+
+    // 1. IA analisa a mensagem
+    const analysisResult = await openaiService.analyzeUserMessage(messageText, {
+      preferredCity: user?.preferredCity,
+      language: user?.language || 'pt'
+    });
+
+    if (!analysisResult.success) {
+      console.log('❌ Análise IA falhou, usando fallback');
+      // Se IA falhar, usar lógica antiga como backup
+      return await processTextMessageFallback(messageText, phoneNumber);
+    }
+
+    const analysis = analysisResult.analysis;
+    console.log(`📊 Análise IA:`, JSON.stringify(analysis, null, 2));
+
+    // 2. Router inteligente baseado na análise
+    await routeBasedOnAnalysis(analysis, messageText, phoneNumber, user);
+
+  } catch (error) {
+    console.error('🚨 Erro na análise inteligente:', error);
+    // Fallback para lógica antiga
+    await processTextMessageFallback(messageText, phoneNumber);
+  }
+}
+
+// Router principal que decide o que fazer baseado na análise IA
+async function routeBasedOnAnalysis(analysis, originalMessage, phoneNumber, user) {
+  const { type, city, action, intent } = analysis;
+
+  console.log(`🎯 Roteando: type=${type}, action=${action}, city=${city}`);
+
+  switch (type) {
+    case 'weather_data':
+      await handleWeatherDataRequest(analysis, phoneNumber, user);
+      break;
+
+    case 'weather_education':
+      await handleWeatherEducationRequest(analysis, originalMessage, phoneNumber, user);
+      break;
+
+    case 'off_topic':
+      await handleOffTopicRequest(analysis, phoneNumber, user);
+      break;
+
+    default:
+      console.log(`⚠️ Tipo desconhecido: ${type}`);
+      await sendHelpMessage(phoneNumber, user?.language || 'pt');
+  }
+}
+
+// Lidar com solicitações de dados meteorológicos
+async function handleWeatherDataRequest(analysis, phoneNumber, user) {
+  try {
+    const { city, action, extracted_info } = analysis;
+
+    // Determinar cidade (da análise, usuário, ou perguntar)
+    let targetCity = city || user?.preferredCity;
+
+    if (!targetCity) {
+      await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+        "🏙️ Para consultar o clima, preciso saber a cidade. Exemplo: 'Clima em Maputo'",
+        phoneNumber
+      );
+      return;
+    }
+
+    // Mostrar que está processando
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Buscando dados meteorológicos');
+
+    // Executar ação baseada na análise
+    switch (action) {
+      case 'fetch_current_weather':
+        await processCurrentWeatherWithAI(targetCity, phoneNumber, user, analysis);
+        break;
+
+      case 'fetch_forecast':
+        await processForecastWithAI(targetCity, phoneNumber, user, analysis);
+        break;
+
+      default:
+        // Fallback para clima atual
+        await processCurrentWeatherWithAI(targetCity, phoneNumber, user, analysis);
+    }
+
+  } catch (error) {
+    console.error('❌ Erro ao processar dados meteorológicos:', error);
+    await whatsappApi.enviarMensagemErro(
+      phoneNumber,
+      "Não consegui obter os dados meteorológicos",
+      "Tente novamente ou verifique o nome da cidade"
+    );
+  }
+}
+
+// Lidar com perguntas educativas sobre meteorologia
+async function handleWeatherEducationRequest(analysis, originalMessage, phoneNumber, user) {
+  try {
+    const language = user?.language || 'pt';
+
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Preparando explicação');
+
+    // Prompt específico para educação meteorológica
+    const educationPrompt = `
+Você é um meteorologista educativo especializado em explicar conceitos climáticos de forma simples.
+
+PERGUNTA DO USUÁRIO: "${originalMessage}"
+CONTEXTO: Usuário em Moçambique, idioma ${language}
+
+INSTRUÇÕES:
+1. Responda APENAS sobre meteorologia/clima
+2. Use linguagem simples e acessível
+3. Inclua exemplos práticos relevantes para Moçambique
+4. Use emojis apropriados
+5. Máximo 300 palavras
+6. Se a pergunta não for sobre meteorologia, redirecione educativamente
+
+Forneça uma explicação clara e útil:
+    `;
+
+    const educationResponse = await openaiService.callOpenAI(educationPrompt, 0.7);
+
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      `🎓 *Explicação Meteorológica*\n\n${educationResponse}\n\n💡 Tem mais dúvidas sobre clima? É só perguntar!`,
+      phoneNumber
+    );
+
+  } catch (error) {
+    console.error('❌ Erro ao responder pergunta educativa:', error);
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      "📚 Desculpe, não consegui preparar a explicação no momento. Tente reformular sua pergunta sobre meteorologia.",
+      phoneNumber
+    );
+  }
+}
+
+// Lidar com tópicos não meteorológicos
+async function handleOffTopicRequest(analysis, phoneNumber, user) {
   const language = user?.language || 'pt';
+
+  const redirectMessage = language === 'pt' ?
+    `🌤️ *Olá!* Sou especializado em meteorologia e clima.\n\n` +
+    `💬 Posso ajudar com:\n` +
+    `• Consultas de clima e temperatura\n` +
+    `• Previsões meteorológicas\n` +
+    `• Explicações sobre fenômenos climáticos\n\n` +
+    `🔍 Experimente perguntar:\n` +
+    `• "Clima em Maputo"\n` +
+    `• "O que é umidade?"\n` +
+    `• "Por que chove?"\n\n` +
+    `Como posso ajudar com informações meteorológicas?`
+    :
+    `🌤️ *Hello!* I'm specialized in meteorology and weather.\n\n` +
+    `💬 I can help with:\n` +
+    `• Weather and temperature queries\n` +
+    `• Weather forecasts\n` +
+    `• Climate phenomena explanations\n\n` +
+    `How can I help with weather information?`;
+
+  await whatsappApi.enviarMensagemUsandoWhatsappAPI(redirectMessage, phoneNumber);
+}
+
+// Processar clima atual com contexto da IA
+async function processCurrentWeatherWithAI(city, phoneNumber, user, analysis) {
+  try {
+    // Buscar dados meteorológicos
+    const weatherData = await weatherService.getCurrentWeather(
+      city,
+      user?.units || 'celsius'
+    );
+
+    // Usar IA para humanizar com contexto da análise
+    const contextualPrompt = `
+DADOS METEOROLÓGICOS:
+- Cidade: ${weatherData.city}, ${weatherData.country}
+- Temperatura: ${weatherData.temperature}${weatherData.units}
+- Sensação térmica: ${weatherData.feelsLike}${weatherData.units}
+- Umidade: ${weatherData.humidity}%
+- Condições: ${weatherData.description}
+
+CONTEXTO DA PERGUNTA ORIGINAL:
+- Intenção: ${analysis.intent}
+- Aspecto específico: ${analysis.extracted_info?.weather_aspect || 'geral'}
+- Momento: ${analysis.extracted_info?.mentioned_time || 'atual'}
+
+Crie uma resposta personalizada que:
+1. Foque no que o usuário realmente perguntou
+2. Use linguagem natural e amigável
+3. Inclua dicas práticas para Moçambique
+4. Máximo 200 palavras
+
+Resposta contextualizada:
+    `;
+
+    const contextualResponse = await openaiService.callOpenAI(contextualPrompt, 0.7);
+
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      `🌤️ *${weatherData.city}*\n\n${contextualResponse}`,
+      phoneNumber
+    );
+
+    // Salvar histórico
+    saveWeatherHistory(phoneNumber, weatherData.city, weatherData.temperature, weatherData.description);
+
+    // Oferecer ações relacionadas
+    await whatsappApi.enviarBotoesAcaoRapida(phoneNumber, weatherData.city);
+
+  } catch (error) {
+    throw error; // Repassar erro para handleWeatherDataRequest
+  }
+}
+
+// Processar previsão com contexto da IA
+async function processForecastWithAI(city, phoneNumber, user, analysis) {
+  try {
+    const forecast = await weatherService.getWeatherForecast(city, 7);
+
+    // Usar IA para análise inteligente da previsão
+    const aiResult = await openaiService.humanizeWeatherForecast(forecast, city, {
+      language: user?.language || 'pt',
+      focusArea: analysis.extracted_info?.weather_aspect,
+      timeframe: analysis.extracted_info?.mentioned_time
+    });
+
+    if (aiResult.success) {
+      await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+        `📅 *Previsão - ${city}*\n\n${aiResult.humanizedText}`,
+        phoneNumber
+      );
+    } else {
+      // Fallback básico
+      const basicForecast = createBasicForecast(forecast, city);
+      await whatsappApi.enviarMensagemUsandoWhatsappAPI(basicForecast, phoneNumber);
+    }
+
+  } catch (error) {
+    throw error; // Repassar erro para handleWeatherDataRequest
+  }
+}
+
+// Manter função antiga como fallback se IA falhar
+async function processTextMessageFallback(messageText, phoneNumber) {
+  const user = getUserByContact(phoneNumber);
+  const language = user?.language || 'pt';
+
+  console.log('🔄 Usando lógica fallback');
 
   // Comandos específicos
   if (optionsCases.includes(messageText)) {
     await processCommand(messageText, phoneNumber, user);
+    return;
+  }
+
+  // Verificar se é consulta de cidade para definir
+  if (checkAwaitingCityInput(messageText, phoneNumber)) {
     return;
   }
 
@@ -982,6 +1238,7 @@ function getWeatherEmoji(description) {
 app.listen(port, async () => {
   console.log(`🌡️ Temperature Bot running on port ${port}`);
   console.log(`📅 Started at: ${new Date().toLocaleString()}`);
+  openaiService.simpleTest("O que é humidade?");
   // Testar conexão com OpenAI
   // if (process.env.OPENAI_API_KEY) {
   //   console.log('🤖 Testando conexão com OpenAI...');

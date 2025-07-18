@@ -7,6 +7,7 @@ class WhatsAppApi {
     constructor(token, phoneNumberID) {
         this.token = token;
         this.phoneNumberID = phoneNumberID;
+        console.log('WhatsAppApi initialized with token:', this.token, 'and phoneNumberID:', this.phoneNumberID);
     }
 
     // Método principal para enviar mensagens de texto

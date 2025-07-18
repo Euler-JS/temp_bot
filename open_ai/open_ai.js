@@ -311,6 +311,176 @@ Use linguagem simples e dicas práticas. Máximo 200 palavras.
         }
     }
 
+
+    // Método principal para analisar intenção do usuário
+    async analyzeUserMessage(message, userContext = {}) {
+        try {
+            const prompt = this.buildAnalysisPrompt(message, userContext);
+
+            const response = await this.callOpenAI(prompt, 0.1); // Temperatura baixa para consistência
+
+            // Parse da resposta JSON
+            const analysis = JSON.parse(response);
+
+            return {
+                success: true,
+                analysis: analysis,
+                originalMessage: message
+            };
+
+        } catch (error) {
+            console.error('Erro ao analisar mensagem:', error.message);
+
+            // Fallback simples se IA falhar
+            return {
+                success: false,
+                analysis: this.createFallbackAnalysis(message),
+                originalMessage: message,
+                error: error.message
+            };
+        }
+    }
+
+    // Construir prompt para análise de intenção
+    buildAnalysisPrompt(message, userContext) {
+        const defaultCity = userContext.preferredCity || null;
+        const language = userContext.language || 'pt';
+
+        return `
+Você é um analisador especializado em meteorologia. Analise a mensagem do usuário e retorne APENAS um JSON válido com a estrutura exata abaixo:
+
+MENSAGEM DO USUÁRIO: "${message}"
+CIDADE PADRÃO DO USUÁRIO: ${defaultCity || "nenhuma"}
+IDIOMA: ${language}
+
+RETORNE APENAS ESTE JSON (sem explicações):
+{
+    "type": "weather_data | weather_education | off_topic",
+    "city": "nome_da_cidade_mencionada | null",
+    "intent": "descrição_breve_da_intenção",
+    "action": "fetch_current_weather | fetch_forecast | provide_explanation | redirect_to_weather",
+    "confidence": 0.95,
+    "extracted_info": {
+        "mentioned_time": "hoje | amanha | null",
+        "weather_aspect": "temperatura | chuva | vento | geral | null",
+        "question_type": "current_data | future_data | explanation | null"
+    }
+}
+
+REGRAS:
+1. Se a mensagem é sobre dados meteorológicos (clima atual, previsão, temperatura) → type: "weather_data"
+2. Se é pergunta educativa sobre meteorologia (o que é umidade, como funciona, etc) → type: "weather_education"  
+3. Se não é sobre meteorologia → type: "off_topic"
+4. Se cidade não mencionada mas usuário tem padrão → use a cidade padrão
+5. intent deve ser claro e específico
+6. confidence entre 0.0 e 1.0
+
+EXEMPLOS:
+"Clima em Maputo" → {"type": "weather_data", "city": "Maputo", "intent": "consultar_clima_atual", "action": "fetch_current_weather"}
+"O que é umidade?" → {"type": "weather_education", "city": null, "intent": "explicar_umidade", "action": "provide_explanation"}
+"Como fazer bolo?" → {"type": "off_topic", "city": null, "intent": "receita_culinaria", "action": "redirect_to_weather"}
+    `.trim();
+    }
+
+    // Criar análise fallback se IA falhar
+    createFallbackAnalysis(message) {
+        const lowerMessage = message.toLowerCase();
+
+        // Detectar palavras meteorológicas
+        const weatherKeywords = ['clima', 'tempo', 'temperatura', 'chuva', 'sol', 'vento', 'umidade', 'previsao'];
+        const educationalKeywords = ['que', 'como', 'porque', 'por que', 'explique', 'significa'];
+
+        const isWeatherRelated = weatherKeywords.some(keyword => lowerMessage.includes(keyword));
+        const isEducational = educationalKeywords.some(keyword => lowerMessage.includes(keyword));
+
+        if (isWeatherRelated && isEducational) {
+            return {
+                type: "weather_education",
+                city: null,
+                intent: "pergunta_educativa_meteorologia",
+                action: "provide_explanation",
+                confidence: 0.6,
+                extracted_info: {
+                    mentioned_time: null,
+                    weather_aspect: "geral",
+                    question_type: "explanation"
+                }
+            };
+        } else if (isWeatherRelated) {
+            return {
+                type: "weather_data",
+                city: this.extractCityFallback(message),
+                intent: "consulta_dados_meteorologicos",
+                action: "fetch_current_weather",
+                confidence: 0.7,
+                extracted_info: {
+                    mentioned_time: lowerMessage.includes('amanha') ? 'amanha' : 'hoje',
+                    weather_aspect: "geral",
+                    question_type: "current_data"
+                }
+            };
+        } else {
+            return {
+                type: "off_topic",
+                city: null,
+                intent: "topico_nao_meteorologico",
+                action: "redirect_to_weather",
+                confidence: 0.8,
+                extracted_info: {
+                    mentioned_time: null,
+                    weather_aspect: null,
+                    question_type: null
+                }
+            };
+        }
+    }
+
+    // Extração simples de cidade para fallback
+    extractCityFallback(message) {
+        const cities = ['maputo', 'beira', 'nampula', 'quelimane', 'tete', 'lichinga', 'pemba'];
+        const lowerMessage = message.toLowerCase();
+
+        for (const city of cities) {
+            if (lowerMessage.includes(city)) {
+                return city.charAt(0).toUpperCase() + city.slice(1);
+            }
+        }
+
+        return null;
+    }
+
+    // Método para testar a análise
+    async testMessageAnalysis() {
+        const testMessages = [
+            "Como está temperatura em Maputo",
+            "Vai chover amanhã?",
+            "O que é umidade relativa?",
+            "Como fazer bolo?",
+            "Previsão para Beira",
+            "Por que chove?"
+        ];
+
+        console.log("🧪 Testando análise de mensagens...\n");
+
+        for (const message of testMessages) {
+            try {
+                const result = await this.analyzeUserMessage(message);
+                console.log(`📝 "${message}"`);
+                console.log(`📊 Resultado:`, JSON.stringify(result.analysis, null, 2));
+                console.log("---");
+            } catch (error) {
+                console.error(`❌ Erro ao testar "${message}":`, error.message);
+            }
+        }
+    }
+
+    async simpleTest(msg) {
+        const result = await this.analyzeUserMessage(msg);
+        console.log(`📝 "${msg}"`);
+        console.log(`📊 Resultado:`, JSON.stringify(result.analysis, null, 2));
+        console.log("---");
+    }
+
     // Configurar modelo (gpt-3.5-turbo, gpt-4, etc.)
     setModel(model) {
         this.model = model;
