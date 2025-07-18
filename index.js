@@ -3,14 +3,9 @@ const fs = require("fs");
 const util = require('util');
 const bodyParser = require("body-parser");
 const axios = require("axios");
-const BooksProcessor = require("./books/booksProcessor");
-const LanguagesProcessor = require("./books/languageProcessor");
 const WhatsAppApi = require("./whatsapp_api/connection");
-const BibleAPI = require("./bible_brain_api/main_bible_brain");
 const FonteAI = require("./bible_brain_api/ai/fonte_ai");
 // const Translations = require("./translations/translation");
-const Translations = require("./transalations/translation");
-const { myBooks, myLanguages } = require("./books/allBooksList");
 const filePath = "./users.json";
 
 const app = express();
@@ -40,11 +35,7 @@ const STREAM = false;
 // -------------- FIM FONTE AI
 
 // -------------- Configuracao de Classes por exportas
-const booksProcessor = new BooksProcessor(myBooks);
-const languagesProcessor = new LanguagesProcessor(myLanguages);
 const whatsappApi = new WhatsAppApi(token, phoneNumberID);
-const bibleAPI = new BibleAPI(API_BASE_URL, API_KEY_BIBLE, API_VERSION);
-const transalations = new Translations();
 const fonteAI = new FonteAI(API_BASE_URL_FONTE_AI, MODEL, STREAM);
 
 
