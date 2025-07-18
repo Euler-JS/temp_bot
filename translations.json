@@ -1,0 +1,40 @@
+{
+    "Portugues": {
+        "select_language_interative": "Seleção de Idiomas",
+        "select_language": "Por favor, selecione o idioma desejado",
+        "interative_btn": "Use o botão para navegar pelas opções.",
+        "interative_see_idiomas": "Ver Idiomas",
+        "you_choose": "Você escolheu",
+        "fist_message_example": " Agora, digite um versículo, por exemplo: Mateus 2.",
+        "please_select_language_error": "Por favor, escolha a língua em que deseja receber os versículos.",
+        "processing_audio": "Processando áudio... Aguarde um momento.",
+        "message_about_fdv": "O Fonte da Vida Bot é um assistente virtual que te ajuda a ouvir versículos da Bíblia em áudio. 📖🎧\n\nComo receber versículos em aúdio? Digite: O livro e o capítulo, ex: *Mateus 20*\n\nPara escolher a língua, digite */escolher_lingua*.\n\n",
+        "info_fdv": "O Fonte da Vida Bot é um assistente virtual que te ajuda a ouvir versículos da Bíblia em áudio. 📖🎧\n\nComo receber versículos em aúdio? Digite: O livro e o capítulo, ex: *Mateus 20*\n\nPara escolher a língua, digite */escolher_lingua*.\n\n",
+        "how_to_receive_audio": "Para receber versículos em áudio, escolha a língua digitando ou clicando em: */escolher_lingua* .  Em seguida  digite o nome do livro e o capítulo, como: *Mateus 2*.",
+        "how_choose_language": "Para escolher a língua, digite */escolher_lingua*.",
+        "how_choose_language_interative": "Para escolher a língua, clique no botão abaixo.",
+        "how_fdv_works": "*Bem - vindo ao Fonte da Vida Bot!* 🙌📖  Aqui, você pode ouvir versículos da Bíblia em áudio. Basta digitar o nome do livro e o capítulo, como: *Mateus 2*. Para escolher a língua, digite */escolher_lingua*.",
+        "error_geting_audio":  "Shalom, Ocorreu um erro, por favor verifique se escreu o nome do livro e em seguida o capítulo. Verifique e tente novamente.",
+        "chat_ativated": "O chat foi ativado com sucesso. Você pode começar a conversar com agora.",
+        "chat_deactivated": "O chat foi desativado com sucesso. Você poderá ativar enviando a mensagem /chat."
+    },
+    "English": {
+        "select_language_interative": "Language Selection",
+        "select_language": "Please select your preferred language",
+        "interative_btn": "Use the button to navigate through the options.",
+        "interative_see_idiomas": "See Languages",
+        "you_choose": "You have chosen",
+        "fist_message_example": " Now, type a verse, for example: Matthew 2.",
+        "please_select_language_error": "Please choose the language in which you want to receive the verses.",
+        "processing_audio": "Processing audio... Please wait a moment.",
+        "message_about_fdv": "Fonte da Vida Bot is a virtual assistant that helps you listen to Bible verses in audio. 📖🎧\n\nHow to receive verses in audio? Type: The book and chapter, e.g. *Matthew 20*\n\nTo choose a language, type */choose_language*.\n\n",
+        "info_fdv": "Fonte da Vida Bot is a virtual assistant that helps you listen to Bible verses in audio. 📖🎧\n\nHow to receive verses in audio? Type: The book and chapter, e.g. *Matthew 20*\n\nTo choose a language, type */choose_language*.\n\n",
+        "how_to_receive_audio": "To receive verses in audio, choose the language by typing or clicking: /choose_language . Then, type the book name and chapter, like: Matthew 2.",
+        "how_choose_language": "To choose a language, type */choose_language*.",
+        "how_choose_language_interative": "To choose a language, click the button below.",
+        "how_fdv_works": "*Welcome to Fonte da Vida Bot!* 🙌📖 Here, you can listen to Bible verses in audio. Just type the book name and chapter, like: *Matthew 2*. To choose a language, type */choose_language*.",
+        "error_geting_audio": "Shalom, There has been an error, please check that you have written the name of the book and then the chapter. Check and try again.",
+        "chat_ativated": "The chat has been successfully activated. You can start chatting now.",
+        "chat_deactivated": "The chat has been successfully deactivated. You can activate it by sending the message /chat."
+    }
+}

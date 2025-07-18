@@ -1,0 +1,47 @@
+[
+  {
+    "contact": "846151124",
+    "language": "POR",
+    "last_access": "2025-02-11T14:44:16.209Z"
+  },
+  {
+    "contact": "258846151124",
+    "language_name": "Portugues",
+    "code": "PORBSP",
+    "prefix": "N2DA",
+    "last_access": "2025-07-17T11:51:49.981Z",
+    "chat": false
+  },
+  {
+    "contact": "258848099515",
+    "language_name": "Shona",
+    "code": "SHDIBS",
+    "prefix": "N2DA",
+    "last_access": "2025-03-20T09:37:48.538Z",
+    "chat": false
+  },
+  {
+    "contact": "447411994945",
+    "language_name": "Chisena",
+    "code": "SEHBSM",
+    "prefix": "N1DA",
+    "last_access": "2025-07-17T11:01:06.739Z",
+    "chat": false
+  },
+  {
+    "contact": "258874944017",
+    "language_name": "Chichewa",
+    "code": "NYJBLV",
+    "prefix": "N2DA",
+    "last_access": "2025-05-09T09:24:09.748Z",
+    "chat": false
+  },
+  {
+    "contact": "258870917736",
+    "language_name": "Chisena",
+    "code": "SEHBSM",
+    "prefix": "N1DA",
+    "last_access": "2025-05-09T10:12:37.512Z",
+    "chat": false
+  }
+]
