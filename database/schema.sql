@@ -74,7 +74,7 @@ CREATE POLICY "Permitir todas as operações para service role" ON users
 */
 
 -- Inserir dados de teste (OPCIONAL - remover em produção)
-/*
+
 INSERT INTO users (
     contact, 
     preferred_city, 
@@ -92,7 +92,7 @@ INSERT INTO users (
     'basic',
     'beira'
 ) ON CONFLICT (contact) DO NOTHING;
-*/
+
 
 -- Verificar se a tabela foi criada corretamente
--- SELECT * FROM users LIMIT 5;
+SELECT * FROM users LIMIT 5;
