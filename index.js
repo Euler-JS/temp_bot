@@ -1,16 +1,14 @@
-// SUBSTITUIR COMPLETAMENTE o arquivo index.js por este:
-
+// index.js - Versão com Supabase
 require('dotenv').config();
 const express = require("express");
-const fs = require("fs");
 const bodyParser = require("body-parser");
 const WhatsAppApi = require("./whatsapp_api/connection");
 const WeatherService = require("./weather_api/weather_service");
 const OPENAI = require("./open_ai/open_ai");
+const SupabaseService = require("./database/supabase");
 
 const app = express();
 const port = process.env.PORT || 3000;
-const filePath = "./users.json";
 
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.json());
@@ -23,163 +21,26 @@ const phoneNumberID = process.env.PHONE_NUMBER_ID || "";
 const whatsappApi = new WhatsAppApi(token, phoneNumberID);
 const weatherService = new WeatherService();
 const openaiService = new OPENAI(process.env.OPEN_AI || "");
-
-// Carregar usuários
-let users = [];
-if (fs.existsSync(filePath)) {
-  const data = fs.readFileSync(filePath, "utf-8");
-  if (data) {
-    users = JSON.parse(data);
-  }
-}
+const dbService = new SupabaseService();
 
 // ===============================================
-// GESTÃO AVANÇADA DE USUÁRIOS
+// GESTÃO AVANÇADA DE USUÁRIOS COM SUPABASE
 // ===============================================
 
-function getUserByContact(contact) {
-  return users.find((user) => user.contact === contact);
+async function getUserByContact(contact) {
+  return await dbService.getUserByContact(contact);
 }
 
-function saveOrUpdateAdvancedUser(contact, updates = {}) {
-  const userIndex = users.findIndex((user) => user.contact === contact);
-  const timestamp = new Date();
-
-  if (userIndex !== -1) {
-    // Usuário existente - atualizar
-    users[userIndex] = {
-      ...users[userIndex],
-      ...updates,
-      last_access: timestamp,
-      queryCount: (users[userIndex].queryCount || 0) + 1
-    };
-    console.log("✅ Usuário avançado atualizado:", contact);
-  } else {
-    // Novo usuário - criar perfil completo
-    users.push({
-      contact,
-      preferredCity: null,
-      units: 'celsius',
-      language: 'pt',
-      notifications: false,
-      queryCount: 1,
-      expertiseLevel: 'basic',
-      preferredComplexity: 'basic',
-      conversationHistory: [],
-      lastCity: null,
-      preferredNotificationTime: '08:00',
-      weatherPreferences: {
-        aspects: ['temperatura', 'chuva'], // O que mais pergunta
-        timeframes: ['hoje', 'amanha'], // Quando mais consulta
-        cities: [] // Cidades mais consultadas
-      },
-      profileData: {
-        age: null,
-        occupation: null,
-        interests: []
-      },
-      last_access: timestamp,
-      weatherHistory: [],
-      ...updates
-    });
-    console.log("🆕 Novo usuário avançado criado:", contact);
-  }
-
-  fs.writeFileSync(filePath, JSON.stringify(users, null, 2));
+async function saveOrUpdateAdvancedUser(contact, updates = {}) {
+  return await dbService.saveOrUpdateAdvancedUser(contact, updates);
 }
 
-function saveConversationContext(contact, message, analysis, response) {
-  const userIndex = users.findIndex((user) => user.contact === contact);
-
-  if (userIndex !== -1) {
-    if (!users[userIndex].conversationHistory) {
-      users[userIndex].conversationHistory = [];
-    }
-
-    // Adicionar ao histórico
-    users[userIndex].conversationHistory.push({
-      timestamp: new Date(),
-      message: message,
-      intent: analysis.intent,
-      city: analysis.city,
-      type: analysis.type,
-      expertiseLevel: analysis.expertiseLevel,
-      responseLength: response?.length || 0
-    });
-
-    // Manter apenas últimas 10 interações
-    if (users[userIndex].conversationHistory.length > 10) {
-      users[userIndex].conversationHistory = users[userIndex].conversationHistory.slice(-10);
-    }
-
-    // Atualizar dados derivados
-    users[userIndex].lastCity = analysis.city || users[userIndex].lastCity;
-
-    // Evoluir expertise automaticamente
-    updateUserExpertise(userIndex, analysis);
-
-    // Atualizar preferências
-    updateUserPreferences(userIndex, analysis);
-
-    fs.writeFileSync(filePath, JSON.stringify(users, null, 2));
-  }
+async function saveConversationContext(contact, message, analysis, response) {
+  return await dbService.saveConversationContext(contact, message, analysis, response);
 }
 
-function updateUserExpertise(userIndex, analysis) {
-  const user = users[userIndex];
-  const queryCount = user.queryCount || 0;
-
-  // Lógica de progressão automática
-  if (queryCount >= 3 && user.expertiseLevel === 'basic') {
-    users[userIndex].expertiseLevel = 'intermediate';
-    console.log(`📈 Usuário evoluiu para intermediário: ${user.contact}`);
-  } else if (queryCount >= 10 && user.expertiseLevel === 'intermediate') {
-    users[userIndex].expertiseLevel = 'advanced';
-    console.log(`🎓 Usuário evoluiu para avançado: ${user.contact}`);
-  }
-
-  // Override baseado em feedback da IA
-  if (analysis.userProfile?.updateExpertise === 'aumentar') {
-    const levels = ['basic', 'intermediate', 'advanced'];
-    const currentIndex = levels.indexOf(user.expertiseLevel);
-    if (currentIndex < levels.length - 1) {
-      users[userIndex].expertiseLevel = levels[currentIndex + 1];
-    }
-  }
-}
-
-function updateUserPreferences(userIndex, analysis) {
-  const user = users[userIndex];
-  const prefs = user.weatherPreferences || { aspects: [], timeframes: [], cities: [] };
-
-  // Rastrear aspectos mais perguntados
-  if (analysis.context?.weatherAspect) {
-    if (!prefs.aspects.includes(analysis.context.weatherAspect)) {
-      prefs.aspects.push(analysis.context.weatherAspect);
-    }
-  }
-
-  // Rastrear timeframes
-  if (analysis.context?.timeframe) {
-    if (!prefs.timeframes.includes(analysis.context.timeframe)) {
-      prefs.timeframes.push(analysis.context.timeframe);
-    }
-  }
-
-  // Rastrear cidades
-  if (analysis.city) {
-    const cityIndex = prefs.cities.findIndex(c => c.name === analysis.city);
-    if (cityIndex >= 0) {
-      prefs.cities[cityIndex].count++;
-    } else {
-      prefs.cities.push({ name: analysis.city, count: 1 });
-    }
-
-    // Ordenar por frequência
-    prefs.cities.sort((a, b) => b.count - a.count);
-  }
-
-  users[userIndex].weatherPreferences = prefs;
+async function saveAdvancedWeatherHistory(contact, weatherData, analysis) {
+  return await dbService.saveAdvancedWeatherHistory(contact, weatherData, analysis);
 }
 
 // ===============================================
@@ -236,20 +97,20 @@ app.post("/webhook", async (req, res) => {
 // ===============================================
 
 async function processAdvancedTextMessage(messageText, phoneNumber) {
-  const user = getUserByContact(phoneNumber);
+  const user = await getUserByContact(phoneNumber);
 
   try {
     console.log(`🧠 Processamento avançado: "${messageText}"`);
 
     // 1. Análise completa com IA
     const analysisResult = await openaiService.analyzeUserMessage(messageText, {
-      preferredCity: user?.preferredCity,
+      preferredCity: user?.preferred_city,
       language: user?.language || 'pt',
-      queryCount: user?.queryCount || 0,
-      expertiseLevel: user?.expertiseLevel || 'basic',
-      conversationHistory: user?.conversationHistory || [],
-      lastCity: user?.lastCity,
-      weatherPreferences: user?.weatherPreferences
+      queryCount: user?.query_count || 0,
+      expertiseLevel: user?.expertise_level || 'basic',
+      conversationHistory: user?.conversation_history || [],
+      lastCity: user?.last_city,
+      weatherPreferences: user?.weather_preferences
     });
 
     if (!analysisResult.success) {
@@ -264,7 +125,7 @@ async function processAdvancedTextMessage(messageText, phoneNumber) {
     const response = await routeAdvancedRequest(analysis, messageText, phoneNumber, user);
 
     // 3. Salvar contexto da conversa
-    saveConversationContext(phoneNumber, messageText, analysis, response);
+    await saveConversationContext(phoneNumber, messageText, analysis, response);
 
     // 4. Enviar sugestões inteligentes se apropriado
     if (analysis.suggestions && analysis.suggestions.length > 0) {
@@ -311,7 +172,7 @@ async function routeAdvancedRequest(analysis, originalMessage, phoneNumber, user
 async function handleAdvancedWeatherData(analysis, phoneNumber, user) {
   try {
     const { city, action, context } = analysis;
-    let targetCity = city || user?.preferredCity;
+    let targetCity = city || user?.preferred_city;
 
     if (!targetCity) {
       await whatsappApi.enviarMensagemUsandoWhatsappAPI(
@@ -337,7 +198,7 @@ async function handleAdvancedWeatherData(analysis, phoneNumber, user) {
       weatherData,
       {
         ...user,
-        conversationHistory: user?.conversationHistory || []
+        conversationHistory: user?.conversation_history || []
       }
     );
 
@@ -352,12 +213,12 @@ async function handleAdvancedWeatherData(analysis, phoneNumber, user) {
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(finalMessage, phoneNumber);
 
     // Salvar histórico meteorológico
-    saveAdvancedWeatherHistory(phoneNumber, weatherData, analysis);
+    await saveAdvancedWeatherHistory(phoneNumber, weatherData, analysis);
 
     // Atualizar usuário
-    saveOrUpdateAdvancedUser(phoneNumber, {
-      lastCity: targetCity,
-      preferredCity: user?.preferredCity || targetCity
+    await saveOrUpdateAdvancedUser(phoneNumber, {
+      last_city: targetCity,
+      preferred_city: user?.preferred_city || targetCity
     });
 
     return finalMessage;
@@ -384,7 +245,7 @@ async function handleAdvancedEducation(analysis, originalMessage, phoneNumber, u
 Pergunta: "${originalMessage}"
 Nível do usuário: ${expertiseLevel}
 Contexto: ${JSON.stringify(context)}
-Histórico: ${user?.conversationHistory?.length || 0} consultas anteriores
+Histórico: ${user?.conversation_history?.length || 0} consultas anteriores
 
 Crie uma explicação meteorológica adequada para este nível:
 
@@ -429,7 +290,7 @@ async function handleCityComparison(analysis, phoneNumber, user) {
     const cities = extractCitiesForComparison(analysis, user);
 
     if (cities.length < 2) {
-      const suggestedCity = user?.lastCity || 'Beira';
+      const suggestedCity = user?.last_city || 'Beira';
       await whatsappApi.enviarMensagemUsandoWhatsappAPI(
         `🔄 Para comparar, preciso de duas cidades.\n\nVocê mencionou: ${city || 'nenhuma'}\n\nQuer comparar com ${suggestedCity}? Ou me diga outra cidade.`,
         phoneNumber
@@ -488,7 +349,7 @@ Comparação concisa:
 async function handleReminderRequest(analysis, phoneNumber, user) {
   try {
     const { city, context } = analysis;
-    const targetCity = city || user?.preferredCity || 'sua cidade';
+    const targetCity = city || user?.preferred_city || 'sua cidade';
 
     const reminderMessage = `🔔 *Lembrete Configurado!*
 
@@ -499,7 +360,7 @@ Vou te avisar sobre mudanças climáticas em ${targetCity}.
 • 🌡️ Mudanças bruscas de temperatura
 • ⚠️ Condições climáticas extremas
 
-⏰ *Horário preferido:* ${user?.preferredNotificationTime || '08:00'}
+⏰ *Horário preferido:* ${user?.preferred_notification_time || '08:00'}
 
 Para ajustar configurações, digite "configurar alertas".
 
@@ -508,7 +369,7 @@ Para ajustar configurações, digite "configurar alertas".
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(reminderMessage, phoneNumber);
 
     // Salvar preferência de notificação
-    saveOrUpdateAdvancedUser(phoneNumber, { notifications: true });
+    await saveOrUpdateAdvancedUser(phoneNumber, { notifications: true });
 
     return reminderMessage;
 
@@ -516,6 +377,22 @@ Para ajustar configurações, digite "configurar alertas".
     console.error('❌ Erro no lembrete:', error);
     return null;
   }
+}
+
+async function handleOffTopicAdvanced(analysis, phoneNumber, user) {
+  const offTopicMessage = `🤖 Sou especializado em clima e meteorologia! 
+
+🌤️ *Posso ajudar com:*
+• Temperatura atual de qualquer cidade
+• Previsões meteorológicas
+• Explicações sobre fenômenos climáticos
+• Comparações entre cidades
+• Alertas climáticos personalizados
+
+💬 Tente perguntar: "Como está o clima em Maputo?"`;
+
+  await whatsappApi.enviarMensagemUsandoWhatsappAPI(offTopicMessage, phoneNumber);
+  return offTopicMessage;
 }
 
 // ===============================================
@@ -563,7 +440,7 @@ async function sendIntelligentSuggestions(phoneNumber, suggestions, city) {
 }
 
 async function processAdvancedInteractiveMessage(interactive, phoneNumber) {
-  const user = getUserByContact(phoneNumber);
+  const user = await getUserByContact(phoneNumber);
 
   if (interactive.type === "button_reply") {
     const buttonId = interactive.button_reply.id;
@@ -574,10 +451,60 @@ async function processAdvancedInteractiveMessage(interactive, phoneNumber) {
       await processAdvancedTextMessage(suggestionText, phoneNumber);
       return;
     }
+
+    // Outros botões interativos
+    switch (buttonId) {
+      case "quick_weather":
+        const city = user?.preferred_city || "Maputo";
+        await processAdvancedTextMessage(`clima em ${city}`, phoneNumber);
+        break;
+
+      case "forecast_7days":
+        const forecastCity = user?.preferred_city || "Maputo";
+        await processAdvancedTextMessage(`previsão 7 dias ${forecastCity}`, phoneNumber);
+        break;
+
+      case "settings_menu":
+        await whatsappApi.enviarMenuConfiguracoes(phoneNumber, user);
+        break;
+
+      default:
+        await processAdvancedTextMessage(buttonId, phoneNumber);
+    }
   }
 
-  // Outros tipos de interação (manter lógica existente)
-  // ... resto da lógica de interactive
+  if (interactive.type === "list_reply") {
+    const listId = interactive.list_reply.id;
+
+    // Processar como texto normal
+    await processAdvancedTextMessage(listId, phoneNumber);
+  }
+}
+
+async function processLocationMessage(location, phoneNumber) {
+  try {
+    const { latitude, longitude } = location;
+
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Identificando localização');
+
+    // Aqui você poderia usar uma API de geocoding reverso
+    // Por exemplo, OpenWeatherMap, Google Maps, etc.
+
+    const locationMessage = `📍 *Localização Recebida*
+
+Latitude: ${latitude}
+Longitude: ${longitude}
+
+💡 Para obter o clima da sua localização, me diga o nome da cidade mais próxima.
+
+Exemplo: "clima aqui" ou "temperatura atual"`;
+
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(locationMessage, phoneNumber);
+
+  } catch (error) {
+    console.error('❌ Erro ao processar localização:', error);
+    await whatsappApi.enviarMensagemErro(phoneNumber, "Erro ao processar localização");
+  }
 }
 
 // ===============================================
@@ -606,43 +533,15 @@ function extractCitiesForComparison(analysis, user) {
   if (analysis.city) cities.push(analysis.city);
 
   // Adicionar cidade do usuário se disponível
-  if (user?.lastCity && !cities.includes(user.lastCity)) {
-    cities.push(user.lastCity);
+  if (user?.last_city && !cities.includes(user.last_city)) {
+    cities.push(user.last_city);
   }
 
-  if (user?.preferredCity && !cities.includes(user.preferredCity)) {
-    cities.push(user.preferredCity);
+  if (user?.preferred_city && !cities.includes(user.preferred_city)) {
+    cities.push(user.preferred_city);
   }
 
   return cities.slice(0, 2);
-}
-
-function saveAdvancedWeatherHistory(phoneNumber, weatherData, analysis) {
-  const userIndex = users.findIndex(u => u.contact === phoneNumber);
-
-  if (userIndex !== -1) {
-    if (!users[userIndex].weatherHistory) {
-      users[userIndex].weatherHistory = [];
-    }
-
-    users[userIndex].weatherHistory.push({
-      timestamp: new Date(),
-      city: weatherData.city,
-      temperature: weatherData.temperature,
-      conditions: weatherData.description,
-      humidity: weatherData.humidity,
-      feelsLike: weatherData.feelsLike,
-      queryType: analysis.type,
-      expertiseLevel: analysis.expertiseLevel
-    });
-
-    // Manter últimas 20 entradas
-    if (users[userIndex].weatherHistory.length > 20) {
-      users[userIndex].weatherHistory = users[userIndex].weatherHistory.slice(-20);
-    }
-
-    fs.writeFileSync(filePath, JSON.stringify(users, null, 2));
-  }
 }
 
 function getWeatherEmoji(description) {
@@ -655,7 +554,7 @@ function getWeatherEmoji(description) {
 }
 
 async function processBasicFallback(messageText, phoneNumber) {
-  const user = getUserByContact(phoneNumber);
+  const user = await getUserByContact(phoneNumber);
   console.log('🔄 Usando fallback básico para:', messageText);
 
   await whatsappApi.enviarMensagemUsandoWhatsappAPI(
@@ -666,7 +565,7 @@ async function processBasicFallback(messageText, phoneNumber) {
 
 async function sendAdvancedHelp(phoneNumber, user) {
   const language = user?.language || 'pt';
-  const expertiseLevel = user?.expertiseLevel || 'basic';
+  const expertiseLevel = user?.expertise_level || 'basic';
 
   let helpMessage = `🤖 *Assistente Meteorológico Avançado*\n\n`;
 
@@ -678,22 +577,89 @@ async function sendAdvancedHelp(phoneNumber, user) {
     helpMessage += `💬 *Comandos Avançados:*\n• Análises técnicas meteorológicas\n• Comparações multi-cidade\n• Alertas personalizados\n• Dados históricos e tendências\n\n`;
   }
 
-  helpMessage += `🎯 *Seu Nível:* ${expertiseLevel.toUpperCase()}\n📊 *Consultas:* ${user?.queryCount || 0}\n\nComo posso ajudar hoje?`;
+  helpMessage += `🎯 *Seu Nível:* ${expertiseLevel.toUpperCase()}\n📊 *Consultas:* ${user?.query_count || 0}\n\nComo posso ajudar hoje?`;
 
   await whatsappApi.enviarMensagemUsandoWhatsappAPI(helpMessage, phoneNumber);
 }
 
 // ===============================================
-// MANTER FUNCIONALIDADES ORIGINAIS
+// ROTAS DE ESTATÍSTICAS E ADMIN
 // ===============================================
 
-// ... manter todas as outras funções originais como processLocationMessage, etc.
+app.get("/stats", async (req, res) => {
+  try {
+    const stats = await dbService.getStats();
+
+    if (!stats) {
+      return res.status(500).json({ error: "Erro ao obter estatísticas" });
+    }
+
+    const activeUsers = await dbService.getActiveUsers(7);
+
+    res.json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      stats: stats,
+      recentUsers: activeUsers.slice(0, 10).map(user => ({
+        contact: user.contact.substring(0, 6) + "****", // Ofuscar contato
+        lastAccess: user.last_access,
+        queryCount: user.query_count,
+        expertiseLevel: user.expertise_level,
+        preferredCity: user.preferred_city
+      }))
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao obter estatísticas:', error);
+    res.status(500).json({ error: "Erro interno do servidor" });
+  }
+});
+
+app.get("/health", async (req, res) => {
+  try {
+    // Testar conexões
+    const dbOk = await dbService.testConnection();
+    const openaiOk = await openaiService.testConnection();
+
+    res.json({
+      status: "ok",
+      timestamp: new Date().toISOString(),
+      services: {
+        database: dbOk ? "ok" : "error",
+        openai: openaiOk.success ? "ok" : "error",
+        whatsapp: token && phoneNumberID ? "configured" : "not configured"
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erro no health check:', error);
+    res.status(500).json({ status: "error", error: error.message });
+  }
+});
+
+// ===============================================
+// INICIALIZAÇÃO DO SERVIDOR
+// ===============================================
 
 app.listen(port, async () => {
-  console.log(`🌡️ Temperature Bot AVANÇADO running on port ${port}`);
+  console.log(`🌡️ Temperature Bot com SUPABASE running on port ${port}`);
   console.log(`📅 Started at: ${new Date().toLocaleString()}`);
-  console.log(`🧠 Funcionalidades IA: ATIVADAS`);
-  console.log(`💡 Memória Contextual: ATIVADA`);
-  console.log(`📈 Progressão de Expertise: ATIVADA`);
-  console.log(`🎯 Sugestões Inteligentes: ATIVADAS`);
+
+  // Testar conexões na inicialização
+  try {
+    const dbTest = await dbService.testConnection();
+    console.log(`🗄️  Database (Supabase): ${dbTest ? '✅ OK' : '❌ ERRO'}`);
+
+    const aiTest = await openaiService.testConnection();
+    console.log(`🧠 OpenAI: ${aiTest.success ? '✅ OK' : '❌ ERRO'}`);
+
+    console.log(`💡 Funcionalidades ativas:`);
+    console.log(`   • Memória Contextual: ✅`);
+    console.log(`   • Progressão de Expertise: ✅`);
+    console.log(`   • Sugestões Inteligentes: ✅`);
+    console.log(`   • Armazenamento Persistente: ✅ Supabase`);
+
+  } catch (error) {
+    console.error('❌ Erro na inicialização:', error);
+  }
 });

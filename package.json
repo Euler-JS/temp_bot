@@ -1,7 +1,7 @@
 {
   "name": "temperature-whatsapp-bot",
-  "version": "1.0.0",
-  "description": "Bot de WhatsApp para consultas de temperatura e clima",
+  "version": "2.0.0",
+  "description": "Bot de WhatsApp para consultas de temperatura e clima com IA e Supabase",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
@@ -9,7 +9,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "echo 'Build completed successfully'",
     "vercel-build": "echo 'Vercel build completed'",
-    "lint": "echo 'Linting would go here'"
+    "lint": "echo 'Linting would go here'",
+    "migrate": "node scripts/migrate.js"
   },
   "keywords": [
     "whatsapp",
@@ -17,11 +18,15 @@
     "weather",
     "temperature",
     "chatbot",
-    "climate"
+    "climate",
+    "supabase",
+    "openai",
+    "ai"
   ],
   "author": "Seu Nome",
   "license": "MIT",
   "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
     "axios": "^1.6.0",
     "body-parser": "^1.20.2",
     "dotenv": "^16.6.1",
@@ -32,6 +37,14 @@
     "nodemon": "^3.0.1"
   },
   "engines": {
-    "node": ">=16.0.0"
-  }
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/seu-usuario/temperature-whatsapp-bot"
+  },
+  "bugs": {
+    "url": "https://github.com/seu-usuario/temperature-whatsapp-bot/issues"
+  },
+  "homepage": "https://github.com/seu-usuario/temperature-whatsapp-bot#readme"
 }
