@@ -5,7 +5,7 @@
     "units": "celsius",
     "language": "pt",
     "notifications": false,
-    "queryCount": 1,
+    "queryCount": 2,
     "expertiseLevel": "basic",
     "preferredComplexity": "basic",
     "conversationHistory": [
@@ -17,6 +17,24 @@
         "type": "weather_data",
         "expertiseLevel": "basic",
         "responseLength": 613
+      },
+      {
+        "timestamp": "2025-07-19T06:34:30.990Z",
+        "message": "Olá. Como está a temperatura hoje?",
+        "intent": "consulta_temperatura",
+        "city": "beira",
+        "type": "weather_data",
+        "expertiseLevel": "basic",
+        "responseLength": 599
+      },
+      {
+        "timestamp": "2025-07-19T06:36:32.638Z",
+        "message": "Como devo conduzir com a temperatura de hoje?",
+        "intent": "como_conduzir",
+        "city": "beira",
+        "type": "weather_education",
+        "expertiseLevel": "basic",
+        "responseLength": 868
       }
     ],
     "lastCity": "beira",
@@ -33,7 +51,7 @@
       "cities": [
         {
           "name": "beira",
-          "count": 1
+          "count": 3
         }
       ]
     },
@@ -42,7 +60,18 @@
       "occupation": null,
       "interests": []
     },
-    "last_access": "2025-07-18T16:37:15.033Z",
-    "weatherHistory": []
+    "last_access": "2025-07-19T06:34:30.990Z",
+    "weatherHistory": [
+      {
+        "timestamp": "2025-07-19T06:34:30.987Z",
+        "city": "Beira",
+        "temperature": 19,
+        "conditions": "nevoeiro",
+        "humidity": 94,
+        "feelsLike": 19,
+        "queryType": "weather_data",
+        "expertiseLevel": "basic"
+      }
+    ]
   }
 ]
