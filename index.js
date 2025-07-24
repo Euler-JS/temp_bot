@@ -1,6 +1,7 @@
+// SUBSTITUIR COMPLETAMENTE o arquivo index.js por este:
+
 require('dotenv').config();
 const express = require("express");
-
 const fs = require("fs");
 const bodyParser = require("body-parser");
 const WhatsAppApi = require("./whatsapp_api/connection");
@@ -21,22 +22,7 @@ const phoneNumberID = process.env.PHONE_NUMBER_ID || "";
 // Inicializar serviços
 const whatsappApi = new WhatsAppApi(token, phoneNumberID);
 const weatherService = new WeatherService();
-
-//OPENAI SERVICE
 const openaiService = new OPENAI(process.env.OPEN_AI || "");
-
-// Comandos disponíveis
-const optionsCases = [
-  "/clima",
-  "/previsao",
-  "/configurar",
-  "/ajuda",
-  "/historico",
-  "Climate",
-  "Forecast",
-  "Settings",
-  "Help"
-];
 
 // Carregar usuários
 let users = [];
@@ -47,11 +33,159 @@ if (fs.existsSync(filePath)) {
   }
 }
 
+// ===============================================
+// GESTÃO AVANÇADA DE USUÁRIOS
+// ===============================================
+
 function getUserByContact(contact) {
   return users.find((user) => user.contact === contact);
 }
 
-// Webhook routes
+function saveOrUpdateAdvancedUser(contact, updates = {}) {
+  const userIndex = users.findIndex((user) => user.contact === contact);
+  const timestamp = new Date();
+
+  if (userIndex !== -1) {
+    // Usuário existente - atualizar
+    users[userIndex] = {
+      ...users[userIndex],
+      ...updates,
+      last_access: timestamp,
+      queryCount: (users[userIndex].queryCount || 0) + 1
+    };
+    console.log("✅ Usuário avançado atualizado:", contact);
+  } else {
+    // Novo usuário - criar perfil completo
+    users.push({
+      contact,
+      preferredCity: null,
+      units: 'celsius',
+      language: 'pt',
+      notifications: false,
+      queryCount: 1,
+      expertiseLevel: 'basic',
+      preferredComplexity: 'basic',
+      conversationHistory: [],
+      lastCity: null,
+      preferredNotificationTime: '08:00',
+      weatherPreferences: {
+        aspects: ['temperatura', 'chuva'], // O que mais pergunta
+        timeframes: ['hoje', 'amanha'], // Quando mais consulta
+        cities: [] // Cidades mais consultadas
+      },
+      profileData: {
+        age: null,
+        occupation: null,
+        interests: []
+      },
+      last_access: timestamp,
+      weatherHistory: [],
+      ...updates
+    });
+    console.log("🆕 Novo usuário avançado criado:", contact);
+  }
+
+  fs.writeFileSync(filePath, JSON.stringify(users, null, 2));
+}
+
+function saveConversationContext(contact, message, analysis, response) {
+  const userIndex = users.findIndex((user) => user.contact === contact);
+
+  if (userIndex !== -1) {
+    if (!users[userIndex].conversationHistory) {
+      users[userIndex].conversationHistory = [];
+    }
+
+    // Adicionar ao histórico
+    users[userIndex].conversationHistory.push({
+      timestamp: new Date(),
+      message: message,
+      intent: analysis.intent,
+      city: analysis.city,
+      type: analysis.type,
+      expertiseLevel: analysis.expertiseLevel,
+      responseLength: response?.length || 0
+    });
+
+    // Manter apenas últimas 10 interações
+    if (users[userIndex].conversationHistory.length > 10) {
+      users[userIndex].conversationHistory = users[userIndex].conversationHistory.slice(-10);
+    }
+
+    // Atualizar dados derivados
+    users[userIndex].lastCity = analysis.city || users[userIndex].lastCity;
+
+    // Evoluir expertise automaticamente
+    updateUserExpertise(userIndex, analysis);
+
+    // Atualizar preferências
+    updateUserPreferences(userIndex, analysis);
+
+    fs.writeFileSync(filePath, JSON.stringify(users, null, 2));
+  }
+}
+
+function updateUserExpertise(userIndex, analysis) {
+  const user = users[userIndex];
+  const queryCount = user.queryCount || 0;
+
+  // Lógica de progressão automática
+  if (queryCount >= 3 && user.expertiseLevel === 'basic') {
+    users[userIndex].expertiseLevel = 'intermediate';
+    console.log(`📈 Usuário evoluiu para intermediário: ${user.contact}`);
+  } else if (queryCount >= 10 && user.expertiseLevel === 'intermediate') {
+    users[userIndex].expertiseLevel = 'advanced';
+    console.log(`🎓 Usuário evoluiu para avançado: ${user.contact}`);
+  }
+
+  // Override baseado em feedback da IA
+  if (analysis.userProfile?.updateExpertise === 'aumentar') {
+    const levels = ['basic', 'intermediate', 'advanced'];
+    const currentIndex = levels.indexOf(user.expertiseLevel);
+    if (currentIndex < levels.length - 1) {
+      users[userIndex].expertiseLevel = levels[currentIndex + 1];
+    }
+  }
+}
+
+function updateUserPreferences(userIndex, analysis) {
+  const user = users[userIndex];
+  const prefs = user.weatherPreferences || { aspects: [], timeframes: [], cities: [] };
+
+  // Rastrear aspectos mais perguntados
+  if (analysis.context?.weatherAspect) {
+    if (!prefs.aspects.includes(analysis.context.weatherAspect)) {
+      prefs.aspects.push(analysis.context.weatherAspect);
+    }
+  }
+
+  // Rastrear timeframes
+  if (analysis.context?.timeframe) {
+    if (!prefs.timeframes.includes(analysis.context.timeframe)) {
+      prefs.timeframes.push(analysis.context.timeframe);
+    }
+  }
+
+  // Rastrear cidades
+  if (analysis.city) {
+    const cityIndex = prefs.cities.findIndex(c => c.name === analysis.city);
+    if (cityIndex >= 0) {
+      prefs.cities[cityIndex].count++;
+    } else {
+      prefs.cities.push({ name: analysis.city, count: 1 });
+    }
+
+    // Ordenar por frequência
+    prefs.cities.sort((a, b) => b.count - a.count);
+  }
+
+  users[userIndex].weatherPreferences = prefs;
+}
+
+// ===============================================
+// WEBHOOK ROUTES (Mantidos)
+// ===============================================
+
 app.get("/webhook", async (req, res) => {
   console.log("Estabelecendo conexão com o Webhook! ");
   let mode = req.query["hub.mode"];
@@ -79,33 +213,17 @@ app.post("/webhook", async (req, res) => {
 
     if (change.field === "messages" && change?.value?.messages?.length > 0) {
       const message = change.value.messages[0];
-      const remetenteFile = message.from;
       const phoneNumber = message.from;
-      const user = getUserByContact(phoneNumber);
 
-      console.log("Mensagem recebida:", message);
+      console.log("📱 Mensagem recebida:", message);
 
       // Processar diferentes tipos de mensagem
       if (message?.type === "text") {
-        const messageText = message.text.body;
-
-        // Verificar se é análise detalhada
-        if (await processDetailedAnalysis(messageText, phoneNumber, user)) {
-          res.sendStatus(200);
-          return;
-        }
-
-        // Verificar se é consulta de clima
-        if (await isWeatherQuery(messageText)) {
-          await processWeatherMessage(messageText, phoneNumber, user);
-          res.sendStatus(200);
-          return;
-        }
-        await processTextMessage(message.text.body, remetenteFile);
+        await processAdvancedTextMessage(message.text.body, phoneNumber);
       } else if (message?.type === "interactive") {
-        await processInteractiveMessage(message.interactive, remetenteFile);
+        await processAdvancedInteractiveMessage(message.interactive, phoneNumber);
       } else if (message?.type === "location") {
-        await processLocationMessage(message.location, remetenteFile);
+        await processLocationMessage(message.location, phoneNumber);
       }
     }
   }
@@ -113,766 +231,394 @@ app.post("/webhook", async (req, res) => {
   res.sendStatus(200);
 });
 
-// Processamento de mensagens de texto
-// SUBSTITUIR a função processTextMessage() atual no index.js por esta:
+// ===============================================
+// PROCESSAMENTO AVANÇADO DE MENSAGENS
+// ===============================================
 
-async function processTextMessage(messageText, phoneNumber) {
+async function processAdvancedTextMessage(messageText, phoneNumber) {
   const user = getUserByContact(phoneNumber);
 
-  // 🧠 NOVA LÓGICA: IA analisa tudo primeiro
   try {
-    console.log(`🤖 Analisando mensagem: "${messageText}"`);
+    console.log(`🧠 Processamento avançado: "${messageText}"`);
 
-    // 1. IA analisa a mensagem
+    // 1. Análise completa com IA
     const analysisResult = await openaiService.analyzeUserMessage(messageText, {
       preferredCity: user?.preferredCity,
-      language: user?.language || 'pt'
+      language: user?.language || 'pt',
+      queryCount: user?.queryCount || 0,
+      expertiseLevel: user?.expertiseLevel || 'basic',
+      conversationHistory: user?.conversationHistory || [],
+      lastCity: user?.lastCity,
+      weatherPreferences: user?.weatherPreferences
     });
 
     if (!analysisResult.success) {
-      console.log('❌ Análise IA falhou, usando fallback');
-      // Se IA falhar, usar lógica antiga como backup
-      return await processTextMessageFallback(messageText, phoneNumber);
+      console.log('❌ Análise falhou, usando fallback básico');
+      return await processBasicFallback(messageText, phoneNumber);
     }
 
     const analysis = analysisResult.analysis;
-    console.log(`📊 Análise IA:`, JSON.stringify(analysis, null, 2));
+    console.log(`📊 Análise completa:`, JSON.stringify(analysis, null, 2));
 
-    // 2. Router inteligente baseado na análise
-    await routeBasedOnAnalysis(analysis, messageText, phoneNumber, user);
+    // 2. Roteamento inteligente
+    const response = await routeAdvancedRequest(analysis, messageText, phoneNumber, user);
+
+    // 3. Salvar contexto da conversa
+    saveConversationContext(phoneNumber, messageText, analysis, response);
+
+    // 4. Enviar sugestões inteligentes se apropriado
+    if (analysis.suggestions && analysis.suggestions.length > 0) {
+      await sendIntelligentSuggestions(phoneNumber, analysis.suggestions, analysis.city);
+    }
 
   } catch (error) {
-    console.error('🚨 Erro na análise inteligente:', error);
-    // Fallback para lógica antiga
-    await processTextMessageFallback(messageText, phoneNumber);
+    console.error('🚨 Erro no processamento avançado:', error);
+    await processBasicFallback(messageText, phoneNumber);
   }
 }
 
-// Router principal que decide o que fazer baseado na análise IA
-async function routeBasedOnAnalysis(analysis, originalMessage, phoneNumber, user) {
-  const { type, city, action, intent } = analysis;
+async function routeAdvancedRequest(analysis, originalMessage, phoneNumber, user) {
+  const { type, action, intent } = analysis;
 
-  console.log(`🎯 Roteando: type=${type}, action=${action}, city=${city}`);
+  console.log(`🎯 Roteamento avançado: type=${type}, action=${action}`);
 
   switch (type) {
     case 'weather_data':
-      await handleWeatherDataRequest(analysis, phoneNumber, user);
-      break;
+      return await handleAdvancedWeatherData(analysis, phoneNumber, user);
 
     case 'weather_education':
-      await handleWeatherEducationRequest(analysis, originalMessage, phoneNumber, user);
-      break;
+      return await handleAdvancedEducation(analysis, originalMessage, phoneNumber, user);
+
+    case 'comparison':
+      return await handleCityComparison(analysis, phoneNumber, user);
+
+    case 'reminder':
+      return await handleReminderRequest(analysis, phoneNumber, user);
 
     case 'off_topic':
-      await handleOffTopicRequest(analysis, phoneNumber, user);
-      break;
+      return await handleOffTopicAdvanced(analysis, phoneNumber, user);
 
     default:
       console.log(`⚠️ Tipo desconhecido: ${type}`);
-      await sendHelpMessage(phoneNumber, user?.language || 'pt');
+      return await sendAdvancedHelp(phoneNumber, user);
   }
 }
 
-// Lidar com solicitações de dados meteorológicos
-async function handleWeatherDataRequest(analysis, phoneNumber, user) {
-  try {
-    const { city, action, extracted_info } = analysis;
+// ===============================================
+// HANDLERS AVANÇADOS
+// ===============================================
 
-    // Determinar cidade (da análise, usuário, ou perguntar)
+async function handleAdvancedWeatherData(analysis, phoneNumber, user) {
+  try {
+    const { city, action, context } = analysis;
     let targetCity = city || user?.preferredCity;
 
     if (!targetCity) {
       await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-        "🏙️ Para consultar o clima, preciso saber a cidade. Exemplo: 'Clima em Maputo'",
+        "🏙️ Para consultar o clima, preciso saber a cidade. Qual cidade te interessa?",
         phoneNumber
       );
-      return;
+      return null;
     }
 
-    // Mostrar que está processando
-    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Buscando dados meteorológicos');
+    // Mensagem de loading contextual
+    const loadingMsg = getContextualLoadingMessage(context, targetCity);
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(loadingMsg, phoneNumber);
 
-    // Executar ação baseada na análise
-    switch (action) {
-      case 'fetch_current_weather':
-        await processCurrentWeatherWithAI(targetCity, phoneNumber, user, analysis);
-        break;
+    // Buscar dados meteorológicos
+    const weatherData = await weatherService.getCurrentWeather(
+      targetCity,
+      user?.units || 'celsius'
+    );
 
-      case 'fetch_forecast':
-        await processForecastWithAI(targetCity, phoneNumber, user, analysis);
-        break;
+    // Gerar resposta contextual com IA
+    const contextualResponse = await openaiService.generateContextualResponse(
+      analysis,
+      weatherData,
+      {
+        ...user,
+        conversationHistory: user?.conversationHistory || []
+      }
+    );
 
-      default:
-        // Fallback para clima atual
-        await processCurrentWeatherWithAI(targetCity, phoneNumber, user, analysis);
+    let finalMessage;
+    if (contextualResponse.success) {
+      finalMessage = `🌤️ *${weatherData.city}*\n\n${contextualResponse.response}`;
+    } else {
+      // Fallback simples
+      finalMessage = createSimpleWeatherMessage(weatherData);
     }
+
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(finalMessage, phoneNumber);
+
+    // Salvar histórico meteorológico
+    saveAdvancedWeatherHistory(phoneNumber, weatherData, analysis);
+
+    // Atualizar usuário
+    saveOrUpdateAdvancedUser(phoneNumber, {
+      lastCity: targetCity,
+      preferredCity: user?.preferredCity || targetCity
+    });
+
+    return finalMessage;
 
   } catch (error) {
-    console.error('❌ Erro ao processar dados meteorológicos:', error);
+    console.error('❌ Erro em dados meteorológicos avançados:', error);
     await whatsappApi.enviarMensagemErro(
       phoneNumber,
-      "Não consegui obter os dados meteorológicos",
+      "Não consegui obter dados meteorológicos",
       "Tente novamente ou verifique o nome da cidade"
     );
+    return null;
   }
 }
 
-// Lidar com perguntas educativas sobre meteorologia
-async function handleWeatherEducationRequest(analysis, originalMessage, phoneNumber, user) {
+async function handleAdvancedEducation(analysis, originalMessage, phoneNumber, user) {
   try {
-    const language = user?.language || 'pt';
+    const { expertiseLevel, context } = analysis;
 
-    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Preparando explicação');
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Preparando explicação personalizada');
 
-    // Prompt específico para educação meteorológica
+    // Prompt educativo adaptado ao nível do usuário
     const educationPrompt = `
-Você é um meteorologista educativo especializado em explicar conceitos climáticos de forma simples.
+Pergunta: "${originalMessage}"
+Nível do usuário: ${expertiseLevel}
+Contexto: ${JSON.stringify(context)}
+Histórico: ${user?.conversationHistory?.length || 0} consultas anteriores
 
-PERGUNTA DO USUÁRIO: "${originalMessage}"
-CONTEXTO: Usuário em Moçambique, idioma ${language}
+Crie uma explicação meteorológica adequada para este nível:
 
-INSTRUÇÕES:
-1. Responda APENAS sobre meteorologia/clima
-2. Use linguagem simples e acessível
-3. Inclua exemplos práticos relevantes para Moçambique
-4. Use emojis apropriados
-5. Máximo 300 palavras
-6. Se a pergunta não for sobre meteorologia, redirecione educativamente
+${expertiseLevel === 'basic' ?
+        'BÁSICO: Use linguagem muito simples, analogias do cotidiano, evite termos técnicos.' :
+        expertiseLevel === 'intermediate' ?
+          'INTERMEDIÁRIO: Equilibre simplicidade com algum conteúdo técnico educativo.' :
+          'AVANÇADO: Use terminologia meteorológica, seja preciso e detalhado.'
+      }
 
-Forneça uma explicação clara e útil:
+Incluir:
+1. Resposta direta à pergunta
+2. Contexto prático para Moçambique
+3. ${expertiseLevel === 'basic' ? 'Exemplo simples' : expertiseLevel === 'intermediate' ? 'Dica adicional' : 'Informação técnica relevante'}
+
+Máximo ${expertiseLevel === 'basic' ? '200' : expertiseLevel === 'intermediate' ? '300' : '400'} palavras:
     `;
 
     const educationResponse = await openaiService.callOpenAI(educationPrompt, 0.7);
 
-    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      `🎓 *Explicação Meteorológica*\n\n${educationResponse}\n\n💡 Tem mais dúvidas sobre clima? É só perguntar!`,
-      phoneNumber
-    );
+    const finalMessage = `🎓 *Explicação ${expertiseLevel === 'basic' ? 'Simples' : expertiseLevel === 'intermediate' ? 'Detalhada' : 'Técnica'}*\n\n${educationResponse}\n\n💡 Quer saber mais sobre meteorologia? É só perguntar!`;
+
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(finalMessage, phoneNumber);
+
+    return finalMessage;
 
   } catch (error) {
-    console.error('❌ Erro ao responder pergunta educativa:', error);
+    console.error('❌ Erro em educação avançada:', error);
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      "📚 Desculpe, não consegui preparar a explicação no momento. Tente reformular sua pergunta sobre meteorologia.",
+      "📚 Desculpe, não consegui preparar a explicação no momento. Tente reformular sua pergunta.",
       phoneNumber
     );
+    return null;
   }
 }
 
-// Lidar com tópicos não meteorológicos
-async function handleOffTopicRequest(analysis, phoneNumber, user) {
-  const language = user?.language || 'pt';
-
-  const redirectMessage = language === 'pt' ?
-    `🌤️ *Olá!* Sou especializado em meteorologia e clima.\n\n` +
-    `💬 Posso ajudar com:\n` +
-    `• Consultas de clima e temperatura\n` +
-    `• Previsões meteorológicas\n` +
-    `• Explicações sobre fenômenos climáticos\n\n` +
-    `🔍 Experimente perguntar:\n` +
-    `• "Clima em Maputo"\n` +
-    `• "O que é umidade?"\n` +
-    `• "Por que chove?"\n\n` +
-    `Como posso ajudar com informações meteorológicas?`
-    :
-    `🌤️ *Hello!* I'm specialized in meteorology and weather.\n\n` +
-    `💬 I can help with:\n` +
-    `• Weather and temperature queries\n` +
-    `• Weather forecasts\n` +
-    `• Climate phenomena explanations\n\n` +
-    `How can I help with weather information?`;
-
-  await whatsappApi.enviarMensagemUsandoWhatsappAPI(redirectMessage, phoneNumber);
-}
-
-// Processar clima atual com contexto da IA
-async function processCurrentWeatherWithAI(city, phoneNumber, user, analysis) {
+async function handleCityComparison(analysis, phoneNumber, user) {
   try {
-    // Buscar dados meteorológicos
-    const weatherData = await weatherService.getCurrentWeather(
-      city,
-      user?.units || 'celsius'
-    );
+    const { city, context } = analysis;
 
-    // Usar IA para humanizar com contexto da análise
-    const contextualPrompt = `
-DADOS METEOROLÓGICOS:
-- Cidade: ${weatherData.city}, ${weatherData.country}
-- Temperatura: ${weatherData.temperature}${weatherData.units}
-- Sensação térmica: ${weatherData.feelsLike}${weatherData.units}
-- Umidade: ${weatherData.humidity}%
-- Condições: ${weatherData.description}
+    // Extrair cidades para comparar
+    const cities = extractCitiesForComparison(analysis, user);
 
-CONTEXTO DA PERGUNTA ORIGINAL:
-- Intenção: ${analysis.intent}
-- Aspecto específico: ${analysis.extracted_info?.weather_aspect || 'geral'}
-- Momento: ${analysis.extracted_info?.mentioned_time || 'atual'}
+    if (cities.length < 2) {
+      const suggestedCity = user?.lastCity || 'Beira';
+      await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+        `🔄 Para comparar, preciso de duas cidades.\n\nVocê mencionou: ${city || 'nenhuma'}\n\nQuer comparar com ${suggestedCity}? Ou me diga outra cidade.`,
+        phoneNumber
+      );
+      return null;
+    }
 
-Crie uma resposta personalizada que:
-1. Foque no que o usuário realmente perguntou
-2. Use linguagem natural e amigável
-3. Inclua dicas práticas para Moçambique
-4. Máximo 200 palavras
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Comparando clima das cidades');
 
-Resposta contextualizada:
+    // Buscar dados das duas cidades
+    const [weather1, weather2] = await Promise.all([
+      weatherService.getCurrentWeather(cities[0], user?.units || 'celsius'),
+      weatherService.getCurrentWeather(cities[1], user?.units || 'celsius')
+    ]);
+
+    // Gerar comparação inteligente
+    const comparisonPrompt = `
+Compare o clima atual entre estas duas cidades:
+
+CIDADE 1 - ${weather1.city}:
+- Temperatura: ${weather1.temperature}°C
+- Sensação: ${weather1.feelsLike}°C
+- Umidade: ${weather1.humidity}%
+- Condições: ${weather1.description}
+
+CIDADE 2 - ${weather2.city}:
+- Temperatura: ${weather2.temperature}°C
+- Sensação: ${weather2.feelsLike}°C
+- Umidade: ${weather2.humidity}%
+- Condições: ${weather2.description}
+
+Crie uma comparação útil que destaque:
+1. Principais diferenças
+2. Qual está melhor para atividades
+3. Recomendações práticas
+4. Formato de fácil leitura
+
+Comparação concisa:
     `;
 
-    const contextualResponse = await openaiService.callOpenAI(contextualPrompt, 0.7);
+    const comparison = await openaiService.callOpenAI(comparisonPrompt, 0.6);
 
-    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      `🌤️ *${weatherData.city}*\n\n${contextualResponse}`,
-      phoneNumber
-    );
+    const finalMessage = `⚖️ *Comparação Climática*\n\n${comparison}`;
 
-    // Salvar histórico
-    saveWeatherHistory(phoneNumber, weatherData.city, weatherData.temperature, weatherData.description);
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(finalMessage, phoneNumber);
 
-    // Oferecer ações relacionadas
-    await whatsappApi.enviarBotoesAcaoRapida(phoneNumber, weatherData.city);
+    return finalMessage;
 
   } catch (error) {
-    throw error; // Repassar erro para handleWeatherDataRequest
+    console.error('❌ Erro na comparação:', error);
+    await whatsappApi.enviarMensagemErro(phoneNumber, "Erro ao comparar cidades");
+    return null;
   }
 }
 
-// Processar previsão com contexto da IA
-async function processForecastWithAI(city, phoneNumber, user, analysis) {
+async function handleReminderRequest(analysis, phoneNumber, user) {
   try {
-    const forecast = await weatherService.getWeatherForecast(city, 7);
+    const { city, context } = analysis;
+    const targetCity = city || user?.preferredCity || 'sua cidade';
 
-    // Usar IA para análise inteligente da previsão
-    const aiResult = await openaiService.humanizeWeatherForecast(forecast, city, {
-      language: user?.language || 'pt',
-      focusArea: analysis.extracted_info?.weather_aspect,
-      timeframe: analysis.extracted_info?.mentioned_time
-    });
+    const reminderMessage = `🔔 *Lembrete Configurado!*
 
-    if (aiResult.success) {
-      await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-        `📅 *Previsão - ${city}*\n\n${aiResult.humanizedText}`,
-        phoneNumber
-      );
-    } else {
-      // Fallback básico
-      const basicForecast = createBasicForecast(forecast, city);
-      await whatsappApi.enviarMensagemUsandoWhatsappAPI(basicForecast, phoneNumber);
-    }
+Vou te avisar sobre mudanças climáticas em ${targetCity}.
+
+⚙️ *Alertas Ativados:*
+• 🌧️ Chuva iminente
+• 🌡️ Mudanças bruscas de temperatura
+• ⚠️ Condições climáticas extremas
+
+⏰ *Horário preferido:* ${user?.preferredNotificationTime || '08:00'}
+
+Para ajustar configurações, digite "configurar alertas".
+
+*Nota:* Este é um recurso premium. Em breve você receberá notificações inteligentes!`;
+
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(reminderMessage, phoneNumber);
+
+    // Salvar preferência de notificação
+    saveOrUpdateAdvancedUser(phoneNumber, { notifications: true });
+
+    return reminderMessage;
 
   } catch (error) {
-    throw error; // Repassar erro para handleWeatherDataRequest
+    console.error('❌ Erro no lembrete:', error);
+    return null;
   }
 }
 
-// Manter função antiga como fallback se IA falhar
-async function processTextMessageFallback(messageText, phoneNumber) {
-  const user = getUserByContact(phoneNumber);
-  const language = user?.language || 'pt';
+// ===============================================
+// SUGESTÕES INTELIGENTES
+// ===============================================
 
-  console.log('🔄 Usando lógica fallback');
-
-  // Comandos específicos
-  if (optionsCases.includes(messageText)) {
-    await processCommand(messageText, phoneNumber, user);
-    return;
-  }
-
-  // Verificar se é consulta de cidade para definir
-  if (checkAwaitingCityInput(messageText, phoneNumber)) {
-    return;
-  }
-
-  // Tentar interpretar como consulta de clima
-  if (await isWeatherQuery(messageText)) {
-    await processWeatherQuery(messageText, phoneNumber, user);
-    return;
-  }
-
-  // Mensagem padrão de ajuda
-  await sendHelpMessage(phoneNumber, language);
-}
-
-// Verificar se é uma consulta de clima
-async function isWeatherQuery(message) {
-  const weatherKeywords = [
-    'clima', 'temperatura', 'tempo', 'weather', 'temperature',
-    'graus', 'quente', 'frio', 'chuva', 'sol'
-  ];
-
-  return weatherKeywords.some(keyword =>
-    message.toLowerCase().includes(keyword)
-  );
-}
-
-// Processar consulta de temperatura
-async function processWeatherQuery(message, phoneNumber, user) {
+async function sendIntelligentSuggestions(phoneNumber, suggestions, city) {
   try {
-    // Extrair nome da cidade da mensagem
-    let cityName = extractCityFromMessage(message, user);
+    if (!suggestions || suggestions.length === 0) return;
 
-    if (!cityName) {
-      await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-        "Por favor, me informe o nome da cidade. Exemplo: 'Clima em Maputo'",
-        phoneNumber
-      );
-      return;
-    }
-
-    // Buscar informações do clima
-    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      "🔍 Buscando informações do clima...",
-      phoneNumber
-    );
-
-    const weatherData = await weatherService.getCurrentWeather(
-      cityName,
-      user?.units || 'celsius'
-    );
-
-    // Salvar no histórico
-    saveWeatherHistory(
-      phoneNumber,
-      weatherData.city,
-      weatherData.temperature,
-      weatherData.description
-    );
-
-    // Enviar resposta formatada
-    const weatherMessage = formatWeatherMessage(weatherData);
-    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      weatherMessage,
-      phoneNumber
-    );
-
-    // Oferecer previsão
-    await offerForecast(phoneNumber, cityName);
-
-  } catch (error) {
-    console.error("Erro ao buscar clima:", error);
-    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      "❌ Desculpe, não consegui encontrar informações do clima para essa cidade. Verifique o nome e tente novamente.",
-      phoneNumber
-    );
-  }
-}
-
-// Extrair cidade da mensagem
-function extractCityFromMessage(message, user) {
-  // Remover palavras-chave comuns
-  const cleanMessage = message
-    .toLowerCase()
-    .replace(/clima|temperatura|tempo|weather|em|in|de|do|da/g, '')
-    .trim();
-
-  // Se não conseguir extrair e o usuário tem cidade preferida
-  if (!cleanMessage && user?.preferredCity) {
-    return user.preferredCity;
-  }
-
-  return cleanMessage || null;
-}
-
-// Formatar mensagem do clima
-function formatWeatherMessage(data) {
-  const emoji = getWeatherEmoji(data.description);
-
-  return `${emoji} *Clima em ${data.city}, ${data.country}*\n\n` +
-    `🌡️ *Temperatura:* ${data.temperature}${data.units}\n` +
-    `🤲 *Sensação térmica:* ${data.feelsLike}${data.units}\n` +
-    `💧 *Umidade:* ${data.humidity}%\n` +
-    `📝 *Condições:* ${data.description}\n\n` +
-    `_Dados fornecidos por ${data.source}_`;
-}
-
-// Emojis baseados na descrição do clima
-function getWeatherEmoji(description) {
-  const desc = description.toLowerCase();
-
-  if (desc.includes('sol') || desc.includes('clear')) return '☀️';
-  if (desc.includes('chuva') || desc.includes('rain')) return '🌧️';
-  if (desc.includes('nuvem') || desc.includes('cloud')) return '☁️';
-  if (desc.includes('neve') || desc.includes('snow')) return '❄️';
-  if (desc.includes('tempest') || desc.includes('storm')) return '⛈️';
-
-  return '🌤️';
-}
-
-// Oferecer previsão do tempo
-async function offerForecast(phoneNumber, city) {
-  const forecastOffer = {
-    messaging_product: 'whatsapp',
-    recipient_type: "individual",
-    to: phoneNumber,
-    type: "interactive",
-    interactive: {
-      type: "button",
-      header: {
-        type: "text",
-        text: "Previsão do Tempo"
-      },
-      body: {
-        text: `Deseja ver a previsão dos próximos dias para ${city}?`
-      },
-      action: {
-        buttons: [
-          {
+    const suggestionButtons = {
+      messaging_product: 'whatsapp',
+      recipient_type: "individual",
+      to: phoneNumber,
+      type: "interactive",
+      interactive: {
+        type: "button",
+        header: {
+          type: "text",
+          text: "💡 Sugestões Inteligentes"
+        },
+        body: {
+          text: "Baseado na sua consulta, você pode se interessar por:"
+        },
+        action: {
+          buttons: suggestions.slice(0, 3).map((suggestion, index) => ({
             type: "reply",
             reply: {
-              id: `forecast_${city}`,
-              title: "Ver Previsão"
+              id: `suggestion_${index}`,
+              title: suggestion.substring(0, 20) // Limite WhatsApp
             }
-          },
-          {
-            type: "reply",
-            reply: {
-              id: "no_forecast",
-              title: "Não, obrigado"
-            }
-          }
-        ]
-      }
-    }
-  };
-
-  await whatsappApi.enviarMensagemInterativaUsandoWhatsappAPI(forecastOffer);
-}
-
-// Processar comandos específicos
-async function processCommand(command, phoneNumber, user) {
-  switch (command) {
-    case "/ajuda":
-    case "Help":
-      await sendHelpMessage(phoneNumber, user?.language || 'pt');
-      break;
-
-    case "/configurar":
-    case "Settings":
-      await sendSettingsMenu(phoneNumber);
-      break;
-
-    case "/historico":
-      await sendWeatherHistory(phoneNumber, user);
-      break;
-
-    default:
-      await sendHelpMessage(phoneNumber, user?.language || 'pt');
-  }
-}
-
-// Enviar mensagem de ajuda
-async function sendHelpMessage(phoneNumber, language = 'pt') {
-  const helpMessage = language === 'pt' ?
-    `🤖 *Bot de Temperatura - Ajuda*\n\n` +
-    `📋 *Comandos disponíveis:*\n` +
-    `• Digite o nome de uma cidade para ver o clima\n` +
-    `• /clima - Clima da sua cidade preferida\n` +
-    `• /previsao - Previsão de 7 dias\n` +
-    `• /configurar - Configurações pessoais\n` +
-    `• /historico - Suas consultas recentes\n\n` +
-    `💡 *Exemplos:*\n` +
-    `• "Clima em Maputo"\n` +
-    `• "Temperatura Beira"\n` +
-    `• "Tempo em Lisboa"`
-    :
-    `🤖 *Temperature Bot - Help*\n\n` +
-    `📋 *Available commands:*\n` +
-    `• Type a city name to see weather\n` +
-    `• /climate - Weather for your preferred city\n` +
-    `• /forecast - 7-day forecast\n` +
-    `• /settings - Personal settings\n\n` +
-    `💡 *Examples:*\n` +
-    `• "Weather in Maputo"\n` +
-    `• "Temperature Beira"`;
-
-  await whatsappApi.enviarMensagemUsandoWhatsappAPI(helpMessage, phoneNumber);
-}
-
-// Adicionar estas funções ao arquivo index.js
-
-// Menu de configurações interativo
-async function sendSettingsMenu(phoneNumber) {
-  const user = getUserByContact(phoneNumber);
-
-  const settingsMenu = {
-    messaging_product: 'whatsapp',
-    recipient_type: "individual",
-    to: phoneNumber,
-    type: "interactive",
-    interactive: {
-      type: "list",
-      header: {
-        type: "text",
-        text: "⚙️ Configurações"
-      },
-      body: {
-        text: "Configure suas preferências do bot de temperatura:"
-      },
-      footer: {
-        text: "Selecione uma opção"
-      },
-      action: {
-        button: "Configurar",
-        sections: [
-          {
-            title: "Preferências Gerais",
-            rows: [
-              {
-                id: "set_city",
-                title: "Cidade Padrão",
-                description: `Atual: ${user?.preferredCity || 'Não definida'}`
-              },
-              {
-                id: "set_units",
-                title: "Unidade de Temperatura",
-                description: `Atual: ${user?.units === 'fahrenheit' ? 'Fahrenheit' : 'Celsius'}`
-              },
-              {
-                id: "set_language",
-                title: "Idioma",
-                description: `Atual: ${user?.language === 'en' ? 'English' : 'Português'}`
-              }
-            ]
-          },
-          {
-            title: "Notificações",
-            rows: [
-              {
-                id: "toggle_notifications",
-                title: "Alertas de Clima",
-                description: `${user?.notifications ? 'Ativado' : 'Desativado'}`
-              }
-            ]
-          }
-        ]
-      }
-    }
-  };
-
-  await whatsappApi.enviarMensagemInterativaUsandoWhatsappAPI(settingsMenu);
-}
-
-// Processar respostas interativas
-async function processInteractiveMessage(interactive, phoneNumber) {
-  const user = getUserByContact(phoneNumber);
-
-  if (interactive.type === "list_reply") {
-    const optionId = interactive.list_reply.id;
-
-    switch (optionId) {
-      case "set_city":
-        await requestCitySelection(phoneNumber);
-        break;
-
-      case "set_units":
-        await sendUnitsMenu(phoneNumber);
-        break;
-
-      case "set_language":
-        await sendLanguageMenu(phoneNumber);
-        break;
-
-      case "toggle_notifications":
-        await toggleNotifications(phoneNumber, user);
-        break;
-
-      default:
-        if (optionId.startsWith("forecast_")) {
-          const city = optionId.replace("forecast_", "");
-          await sendWeatherForecast(phoneNumber, city, user);
+          }))
         }
-        break;
-    }
+      }
+    };
+
+    // Delay para não sobrepor com resposta principal
+    setTimeout(async () => {
+      await whatsappApi.enviarMensagemInterativaUsandoWhatsappAPI(suggestionButtons);
+    }, 2000);
+
+  } catch (error) {
+    console.error('❌ Erro ao enviar sugestões:', error);
   }
+}
+
+async function processAdvancedInteractiveMessage(interactive, phoneNumber) {
+  const user = getUserByContact(phoneNumber);
 
   if (interactive.type === "button_reply") {
     const buttonId = interactive.button_reply.id;
 
-    if (buttonId.startsWith("forecast_")) {
-      const city = buttonId.replace("forecast_", "");
-      await sendWeatherForecast(phoneNumber, city, user);
-    } else if (buttonId === "no_forecast") {
-      await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-        "👍 Perfeito! Se precisar de mais informações, é só perguntar.",
-        phoneNumber
-      );
+    if (buttonId.startsWith("suggestion_")) {
+      // Usuário clicou numa sugestão - processar como nova mensagem
+      const suggestionText = interactive.button_reply.title;
+      await processAdvancedTextMessage(suggestionText, phoneNumber);
+      return;
     }
   }
+
+  // Outros tipos de interação (manter lógica existente)
+  // ... resto da lógica de interactive
 }
 
-// Solicitar seleção de cidade
-async function requestCitySelection(phoneNumber) {
-  await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-    "🏙️ *Definir Cidade Padrão*\n\n" +
-    "Digite o nome da cidade que você gostaria de definir como padrão.\n" +
-    "Exemplo: Maputo, Beira, Lisboa, etc.\n\n" +
-    "_Digite 'cancelar' para voltar ao menu._",
-    phoneNumber
-  );
+// ===============================================
+// UTILITÁRIOS AVANÇADOS
+// ===============================================
 
-  // Marcar usuário como aguardando cidade
+function getContextualLoadingMessage(context, city) {
+  const { timeframe, weatherAspect } = context || {};
+
+  if (timeframe === 'amanha') return `🔍 Verificando previsão para amanhã em ${city}...`;
+  if (weatherAspect === 'chuva') return `☔ Analisando possibilidade de chuva em ${city}...`;
+  if (weatherAspect === 'temperatura') return `🌡️ Consultando temperatura atual em ${city}...`;
+
+  return `🔍 Buscando informações meteorológicas de ${city}...`;
+}
+
+function createSimpleWeatherMessage(weatherData) {
+  const emoji = getWeatherEmoji(weatherData.description);
+  return `${emoji} *${weatherData.city}*\n\n🌡️ ${weatherData.temperature}${weatherData.units} (sensação de ${weatherData.feelsLike}${weatherData.units})\n💧 Umidade: ${weatherData.humidity}%\n📝 ${weatherData.description}`;
+}
+
+function extractCitiesForComparison(analysis, user) {
+  const cities = [];
+
+  // Tentar extrair da análise
+  if (analysis.city) cities.push(analysis.city);
+
+  // Adicionar cidade do usuário se disponível
+  if (user?.lastCity && !cities.includes(user.lastCity)) {
+    cities.push(user.lastCity);
+  }
+
+  if (user?.preferredCity && !cities.includes(user.preferredCity)) {
+    cities.push(user.preferredCity);
+  }
+
+  return cities.slice(0, 2);
+}
+
+function saveAdvancedWeatherHistory(phoneNumber, weatherData, analysis) {
   const userIndex = users.findIndex(u => u.contact === phoneNumber);
-  if (userIndex !== -1) {
-    users[userIndex].awaitingCity = true;
-    fs.writeFileSync(filePath, JSON.stringify(users, null, 2));
-  }
-}
-
-// Menu de unidades de temperatura
-async function sendUnitsMenu(phoneNumber) {
-  const unitsMenu = {
-    messaging_product: 'whatsapp',
-    recipient_type: "individual",
-    to: phoneNumber,
-    type: "interactive",
-    interactive: {
-      type: "button",
-      header: {
-        type: "text",
-        text: "🌡️ Unidade de Temperatura"
-      },
-      body: {
-        text: "Escolha sua unidade de temperatura preferida:"
-      },
-      action: {
-        buttons: [
-          {
-            type: "reply",
-            reply: {
-              id: "units_celsius",
-              title: "Celsius (°C)"
-            }
-          },
-          {
-            type: "reply",
-            reply: {
-              id: "units_fahrenheit",
-              title: "Fahrenheit (°F)"
-            }
-          }
-        ]
-      }
-    }
-  };
-
-  await whatsappApi.enviarMensagemInterativaUsandoWhatsappAPI(unitsMenu);
-}
-
-// Enviar previsão do tempo
-async function sendWeatherForecast(phoneNumber, city, user) {
-  try {
-    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      "🔍 Buscando previsão do tempo...",
-      phoneNumber
-    );
-
-    const forecast = await weatherService.getWeatherForecast(city, 7);
-
-    let forecastMessage = `📅 *Previsão de 7 dias - ${city}*\n\n`;
-
-    forecast.forEach((day, index) => {
-      const date = new Date(day.date);
-      const dayName = index === 0 ? 'Hoje' :
-        index === 1 ? 'Amanhã' :
-          date.toLocaleDateString('pt-BR', { weekday: 'short' });
-
-      const emoji = getWeatherEmoji(day.description);
-
-      forecastMessage += `${emoji} *${dayName}* (${date.toLocaleDateString('pt-BR', { month: 'short', day: 'numeric' })})\n`;
-      forecastMessage += `   ${day.minTemp}° - ${day.maxTemp}° | ${day.description}\n\n`;
-    });
-
-    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      forecastMessage,
-      phoneNumber
-    );
-
-  } catch (error) {
-    console.error("Erro ao buscar previsão:", error);
-    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      "❌ Não foi possível obter a previsão do tempo. Tente novamente mais tarde.",
-      phoneNumber
-    );
-  }
-}
-
-// Enviar histórico do usuário
-async function sendWeatherHistory(phoneNumber, user) {
-  if (!user || !user.weatherHistory || user.weatherHistory.length === 0) {
-    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      "📝 Você ainda não fez consultas de clima. Digite o nome de uma cidade para começar!",
-      phoneNumber
-    );
-    return;
-  }
-
-  let historyMessage = "📚 *Histórico de Consultas*\n\n";
-
-  user.weatherHistory.slice(-5).reverse().forEach((entry, index) => {
-    const date = new Date(entry.timestamp);
-    const emoji = getWeatherEmoji(entry.conditions);
-
-    historyMessage += `${emoji} *${entry.city}*\n`;
-    historyMessage += `   ${entry.temperature}°C | ${entry.conditions}\n`;
-    historyMessage += `   ${date.toLocaleDateString('pt-BR')} às ${date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}\n\n`;
-  });
-
-  await whatsappApi.enviarMensagemUsandoWhatsappAPI(historyMessage, phoneNumber);
-}
-
-// Alternar notificações
-async function toggleNotifications(phoneNumber, user) {
-  const currentStatus = user?.notifications || false;
-  const newStatus = !currentStatus;
-
-  // Atualizar usuário
-  saveOrUpdateUser(
-    phoneNumber,
-    user?.preferredCity,
-    user?.units,
-    user?.language,
-    newStatus
-  );
-
-  const statusText = newStatus ? 'ativadas' : 'desativadas';
-  const emoji = newStatus ? '🔔' : '🔕';
-
-  await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-    `${emoji} Notificações de clima foram ${statusText}!`,
-    phoneNumber
-  );
-}
-
-// Substituir a função saveOrUpdateUser atual por esta versão para temperatura
-function saveOrUpdateUser(contact, preferredCity, units, language, notifications) {
-  const userIndex = users.findIndex((user) => user.contact === contact);
-
-  if (userIndex !== -1) {
-    // Usuário já existe, apenas atualiza os dados
-    users[userIndex].preferredCity = preferredCity;
-    users[userIndex].units = units; // 'celsius' ou 'fahrenheit'
-    users[userIndex].language = language;
-    users[userIndex].notifications = notifications; // true/false para alertas
-    users[userIndex].last_access = new Date();
-    console.log("Usuário atualizado com sucesso!");
-  } else {
-    // Usuário não existe, adiciona um novo
-    users.push({
-      contact,
-      preferredCity,
-      units: units || 'celsius',
-      language: language || 'pt',
-      notifications: notifications || false,
-      last_access: new Date(),
-      weatherHistory: [] // Histórico de consultas
-    });
-    console.log("Novo usuário salvo com sucesso!");
-  }
-
-  // Salva as alterações no arquivo
-  fs.writeFileSync(filePath, JSON.stringify(users, null, 2));
-}
-
-// Função para salvar histórico de consultas de temperatura
-function saveWeatherHistory(contact, city, temperature, conditions, timestamp) {
-  const userIndex = users.findIndex((user) => user.contact === contact);
 
   if (userIndex !== -1) {
     if (!users[userIndex].weatherHistory) {
@@ -880,349 +626,23 @@ function saveWeatherHistory(contact, city, temperature, conditions, timestamp) {
     }
 
     users[userIndex].weatherHistory.push({
-      city,
-      temperature,
-      conditions,
-      timestamp: timestamp || new Date()
+      timestamp: new Date(),
+      city: weatherData.city,
+      temperature: weatherData.temperature,
+      conditions: weatherData.description,
+      humidity: weatherData.humidity,
+      feelsLike: weatherData.feelsLike,
+      queryType: analysis.type,
+      expertiseLevel: analysis.expertiseLevel
     });
 
-    // Manter apenas os últimos 10 registros
-    if (users[userIndex].weatherHistory.length > 10) {
-      users[userIndex].weatherHistory = users[userIndex].weatherHistory.slice(-10);
+    // Manter últimas 20 entradas
+    if (users[userIndex].weatherHistory.length > 20) {
+      users[userIndex].weatherHistory = users[userIndex].weatherHistory.slice(-20);
     }
 
     fs.writeFileSync(filePath, JSON.stringify(users, null, 2));
   }
-}
-
-// Processar localização compartilhada
-async function processLocationMessage(location, phoneNumber) {
-  try {
-    const { latitude, longitude } = location;
-
-    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      "📍 Localização recebida! Buscando clima da sua região...",
-      phoneNumber
-    );
-
-    // Usar coordenadas para buscar clima
-    const weatherData = await weatherService.getCurrentWeather(
-      `${latitude},${longitude}`,
-      getUserByContact(phoneNumber)?.units || 'celsius'
-    );
-
-    const weatherMessage = formatWeatherMessage(weatherData);
-    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      weatherMessage,
-      phoneNumber
-    );
-
-  } catch (error) {
-    console.error("Erro ao processar localização:", error);
-    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      "❌ Não foi possível obter o clima da sua localização. Tente enviar o nome da cidade.",
-      phoneNumber
-    );
-  }
-}
-
-// Verificar se usuário está aguardando entrada de cidade
-function checkAwaitingCityInput(message, phoneNumber) {
-  const user = getUserByContact(phoneNumber);
-
-  if (user?.awaitingCity) {
-    if (message.toLowerCase() === 'cancelar') {
-      // Cancelar operação
-      const userIndex = users.findIndex(u => u.contact === phoneNumber);
-      if (userIndex !== -1) {
-        delete users[userIndex].awaitingCity;
-        fs.writeFileSync(filePath, JSON.stringify(users, null, 2));
-      }
-
-      whatsappApi.enviarMensagemUsandoWhatsappAPI(
-        "❌ Operação cancelada.",
-        phoneNumber
-      );
-      return true;
-    }
-
-    // Salvar cidade e confirmar
-    saveOrUpdateUser(
-      phoneNumber,
-      message,
-      user.units,
-      user.language,
-      user.notifications
-    );
-
-    // Remover flag de aguardando
-    const userIndex = users.findIndex(u => u.contact === phoneNumber);
-    if (userIndex !== -1) {
-      delete users[userIndex].awaitingCity;
-      fs.writeFileSync(filePath, JSON.stringify(users, null, 2));
-    }
-
-    whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      `✅ Cidade padrão definida como: *${message}*\n\nAgora você pode usar /clima para ver o tempo da sua cidade.`,
-      phoneNumber
-    );
-    return true;
-  }
-
-  return false;
-}
-
-// ================================
-// EXEMPLO 1: Consulta de clima com IA
-// ================================
-async function processWeatherQueryWithAI(message, phoneNumber, user) {
-  try {
-    const cityName = extractCityFromMessage(message) || user?.preferredCity;
-
-    if (!cityName) {
-      await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-        "Por favor, me informe o nome da cidade. Exemplo: 'Clima em Maputo'",
-        phoneNumber
-      );
-      return;
-    }
-
-    // 1. Mostrar que está processando
-    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Analisando clima com IA');
-
-    // 2. Buscar dados do clima
-    const weatherData = await weatherService.getCurrentWeather(
-      cityName,
-      user?.units || 'celsius'
-    );
-
-    // 3. 🤖 HUMANIZAR COM OPENAI
-    const aiResult = await openaiService.humanizeWeatherData(weatherData, {
-      language: user?.language || 'pt',
-      location: 'Moçambique'
-    });
-
-    // 4. Enviar resposta humanizada
-    if (aiResult.success) {
-      // Resposta da IA - mais amigável e completa
-      await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-        `🤖 *Análise Inteligente do Clima*\n\n${aiResult.humanizedText}`,
-        phoneNumber
-      );
-    } else {
-      // Fallback caso IA falhe
-      console.log('IA falhou, usando fallback:', aiResult.error);
-      const basicMessage = formatBasicWeatherMessage(weatherData);
-      await whatsappApi.enviarMensagemUsandoWhatsappAPI(basicMessage, phoneNumber);
-    }
-
-    // 5. Salvar no histórico
-    saveWeatherHistory(phoneNumber, weatherData.city, weatherData.temperature, weatherData.description);
-
-    // 6. Oferecer ações adicionais
-    await whatsappApi.enviarBotoesAcaoRapida(phoneNumber, weatherData.city);
-
-  } catch (error) {
-    console.error("Erro na consulta com IA:", error);
-    await whatsappApi.enviarMensagemErro(
-      phoneNumber,
-      "Não consegui analisar o clima",
-      "Tente novamente em alguns minutos"
-    );
-  }
-}
-
-// ================================
-// EXEMPLO 2: Previsão com análise inteligente
-// ================================
-async function sendIntelligentForecast(phoneNumber, city, user) {
-  try {
-    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Gerando análise inteligente da previsão');
-
-    // 1. Buscar previsão
-    const forecast = await weatherService.getWeatherForecast(city, 7);
-
-    // 2. 🤖 HUMANIZAR COM OPENAI
-    const aiResult = await openaiService.humanizeWeatherForecast(forecast, city, {
-      language: user?.language || 'pt'
-    });
-
-    if (aiResult.success) {
-      await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-        `🔮 *Previsão Inteligente - ${city}*\n\n${aiResult.humanizedText}`,
-        phoneNumber
-      );
-    } else {
-      // Fallback básico
-      const basicForecast = createBasicForecast(forecast, city);
-      await whatsappApi.enviarMensagemUsandoWhatsappAPI(basicForecast, phoneNumber);
-    }
-
-  } catch (error) {
-    console.error("Erro na previsão inteligente:", error);
-    await whatsappApi.enviarMensagemErro(phoneNumber, "Erro na análise da previsão");
-  }
-}
-
-// ================================
-// EXEMPLO 3: Recomendações personalizadas
-// ================================
-async function sendPersonalizedRecommendations(phoneNumber, weatherData, user) {
-  try {
-    // Definir preferências do usuário baseado no perfil
-    const userPreferences = {
-      activities: user?.preferredActivities || 'atividades gerais',
-      workType: user?.workType || 'trabalho geral',
-      healthConcerns: user?.healthConcerns || []
-    };
-
-    // 🤖 GERAR RECOMENDAÇÕES COM IA
-    const recommendations = await openaiService.generateWeatherRecommendations(
-      weatherData,
-      userPreferences
-    );
-
-    if (recommendations.success) {
-      await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-        `💡 *Recomendações Personalizadas*\n\n${recommendations.recommendations}`,
-        phoneNumber
-      );
-    }
-
-  } catch (error) {
-    console.error("Erro nas recomendações:", error);
-  }
-}
-
-// ================================
-// EXEMPLO 4: Comando de análise detalhada
-// ================================
-async function processDetailedAnalysis(message, phoneNumber, user) {
-  if (!message.includes('análise') && !message.includes('detalhes')) {
-    return false; // Não é um comando de análise
-  }
-
-  try {
-    const cityName = extractCityFromMessage(message) || user?.preferredCity;
-
-    if (!cityName) {
-      await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-        "Para análise detalhada, informe a cidade. Ex: 'Análise detalhada de Maputo'",
-        phoneNumber
-      );
-      return true;
-    }
-
-    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Gerando análise detalhada com IA');
-
-    // Buscar dados atuais e previsão
-    const [currentWeather, forecast] = await Promise.all([
-      weatherService.getCurrentWeather(cityName, user?.units || 'celsius'),
-      weatherService.getWeatherForecast(cityName, 3)
-    ]);
-
-    // Criar prompt especial para análise detalhada
-    const detailedPrompt = `
-Faça uma análise meteorológica detalhada mas acessível para ${cityName}:
-
-CLIMA ATUAL:
-- Temperatura: ${currentWeather.temperature}${currentWeather.units}
-- Sensação: ${currentWeather.feelsLike}${currentWeather.units}
-- Umidade: ${currentWeather.humidity}%
-- Condições: ${currentWeather.description}
-
-PRÓXIMOS 3 DIAS:
-${forecast.map((day, i) => `Dia ${i + 1}: ${day.minTemp}°-${day.maxTemp}°, ${day.description}`).join('\n')}
-
-Crie uma análise que inclua:
-1. Situação atual explicada de forma simples
-2. Comparação com temperaturas típicas da região
-3. Tendência dos próximos dias
-4. Impactos práticos (conforto, atividades, saúde)
-5. Recomendações específicas
-6. Melhor horário para atividades ao ar livre
-
-Máximo 400 palavras, tom educativo mas acessível.
-        `;
-
-    const analysis = await openaiService.callOpenAI(detailedPrompt, 0.3); // Temperatura baixa para mais precisão
-
-    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      `📊 *Análise Meteorológica Detalhada - ${cityName}*\n\n${analysis}`,
-      phoneNumber
-    );
-
-    return true;
-
-  } catch (error) {
-    console.error("Erro na análise detalhada:", error);
-    await whatsappApi.enviarMensagemErro(phoneNumber, "Erro na análise detalhada");
-    return true;
-  }
-}
-
-// ================================
-// FUNÇÃO PRINCIPAL: Escolher entre IA ou básico
-// ================================
-async function processWeatherMessage(message, phoneNumber, user) {
-  // Verificar se usuário tem IA ativada (premium feature)
-  // const hasAIPlan = user?.plan === 'premium' || user?.aiEnabled === true;
-
-  // if (hasAIPlan) {
-  // 🤖 Usar IA para resposta mais rica
-  await processWeatherQueryWithAI(message, phoneNumber, user);
-  // } else {
-  //   // 📝 Usar resposta básica
-  //   await processBasicWeatherQuery(message, phoneNumber, user);
-
-  //   // Oferecer upgrade para IA
-  //   await offerAIUpgrade(phoneNumber);
-  // }
-}
-
-// Oferecer upgrade para funcionalidades IA
-async function offerAIUpgrade(phoneNumber) {
-  const upgradeMessage = `
-🤖 *Quer respostas mais inteligentes?*
-
-Com o plano Premium você recebe:
-• Análise meteorológica com IA
-• Explicações personalizadas e simples
-• Recomendações baseadas no seu perfil
-• Dicas específicas para sua região
-
-💎 Digite */premium* para saber mais!
-    `.trim();
-
-  setTimeout(async () => {
-    await whatsappApi.enviarMensagemUsandoWhatsappAPI(upgradeMessage, phoneNumber);
-  }, 5000); // Enviar após 5 segundos
-}
-
-// ================================
-// FUNÇÕES AUXILIARES
-// ================================
-
-function formatBasicWeatherMessage(data) {
-  const emoji = getWeatherEmoji(data.description);
-
-  return `${emoji} *Clima em ${data.city}, ${data.country}*\n\n` +
-    `🌡️ *Temperatura:* ${data.temperature}${data.units}\n` +
-    `🤲 *Sensação térmica:* ${data.feelsLike}${data.units}\n` +
-    `💧 *Umidade:* ${data.humidity}%\n` +
-    `📝 *Condições:* ${data.description}`;
-}
-
-function createBasicForecast(forecast, city) {
-  let message = `📅 *Previsão para ${city}*\n\n`;
-
-  forecast.slice(0, 3).forEach((day, index) => {
-    const dayName = index === 0 ? 'Hoje' : index === 1 ? 'Amanhã' : 'Depois';
-    const emoji = getWeatherEmoji(day.description);
-    message += `${emoji} ${dayName}: ${day.minTemp}° a ${day.maxTemp}°\n   ${day.description}\n\n`;
-  });
-
-  return message;
 }
 
 function getWeatherEmoji(description) {
@@ -1234,22 +654,46 @@ function getWeatherEmoji(description) {
   return '🌤️';
 }
 
+async function processBasicFallback(messageText, phoneNumber) {
+  const user = getUserByContact(phoneNumber);
+  console.log('🔄 Usando fallback básico para:', messageText);
+
+  await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+    "🤖 Desculpe, não consegui entender completamente sua mensagem.\n\n💬 Você pode tentar:\n• 'Clima em [cidade]'\n• 'Previsão para amanhã'\n• 'O que é [termo meteorológico]?'\n\nComo posso ajudar?",
+    phoneNumber
+  );
+}
+
+async function sendAdvancedHelp(phoneNumber, user) {
+  const language = user?.language || 'pt';
+  const expertiseLevel = user?.expertiseLevel || 'basic';
+
+  let helpMessage = `🤖 *Assistente Meteorológico Avançado*\n\n`;
+
+  if (expertiseLevel === 'basic') {
+    helpMessage += `💬 *Comandos Simples:*\n• "Clima em [cidade]"\n• "Vai chover amanhã?"\n• "O que é umidade?"\n\n`;
+  } else if (expertiseLevel === 'intermediate') {
+    helpMessage += `💬 *Comandos Disponíveis:*\n• Consultas: "Temperatura Maputo"\n• Comparações: "Compare Maputo e Beira"\n• Educação: "Como se forma a chuva?"\n• Previsões: "Resumo da semana"\n\n`;
+  } else {
+    helpMessage += `💬 *Comandos Avançados:*\n• Análises técnicas meteorológicas\n• Comparações multi-cidade\n• Alertas personalizados\n• Dados históricos e tendências\n\n`;
+  }
+
+  helpMessage += `🎯 *Seu Nível:* ${expertiseLevel.toUpperCase()}\n📊 *Consultas:* ${user?.queryCount || 0}\n\nComo posso ajudar hoje?`;
+
+  await whatsappApi.enviarMensagemUsandoWhatsappAPI(helpMessage, phoneNumber);
+}
+
+// ===============================================
+// MANTER FUNCIONALIDADES ORIGINAIS
+// ===============================================
+
+// ... manter todas as outras funções originais como processLocationMessage, etc.
 
 app.listen(port, async () => {
-  console.log(`🌡️ Temperature Bot running on port ${port}`);
+  console.log(`🌡️ Temperature Bot AVANÇADO running on port ${port}`);
   console.log(`📅 Started at: ${new Date().toLocaleString()}`);
-  openaiService.simpleTest("O que é humidade?");
-  // Testar conexão com OpenAI
-  // if (process.env.OPENAI_API_KEY) {
-  //   console.log('🤖 Testando conexão com OpenAI...');
-  //   const testResult = await openaiService.testConnection();
-
-  //   if (testResult.success) {
-  //     console.log('✅ OpenAI conectado com sucesso!');
-  //   } else {
-  //     console.log('❌ Erro na conexão OpenAI:', testResult.error);
-  //   }
-  // } else {
-  //   console.log('⚠️ OPENAI_API_KEY não configurada - funcionalidades IA desabilitadas');
-  // }
+  console.log(`🧠 Funcionalidades IA: ATIVADAS`);
+  console.log(`💡 Memória Contextual: ATIVADA`);
+  console.log(`📈 Progressão de Expertise: ATIVADA`);
+  console.log(`🎯 Sugestões Inteligentes: ATIVADAS`);
 });

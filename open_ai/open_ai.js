@@ -1,102 +1,511 @@
+// SUBSTITUIR COMPLETAMENTE o arquivo open_ai/open_ai.js por este:
+
 require('dotenv').config();
 const axios = require('axios');
-
 
 class OPENAI {
     constructor(token) {
         this.token = token;
         this.baseURL = 'https://api.openai.com/v1';
-        this.model = 'gpt-3.5-turbo'; // Ou 'gpt-4' para melhor qualidade
+        this.model = 'gpt-3.5-turbo';
         this.maxTokens = 300;
+
+        // Cache de preprocessamento
+        this.preprocessCache = new Map();
+
+        // Expansões e correções comuns
+        this.expansions = {
+            'temp': 'temperatura',
+            'mpt': 'maputo',
+            'bra': 'beira',
+            'prev': 'previsão',
+            'clma': 'clima',
+            'amnh': 'amanhã',
+            'hje': 'hoje'
+        };
+
+        // Cidades com correções
+        this.cityCorrections = {
+            'maptu': 'maputo',
+            'beira': 'beira',
+            'nampla': 'nampula',
+            'queliman': 'quelimane',
+            'teet': 'tete',
+            'pemb': 'pemba'
+        };
 
         if (!token) {
             throw new Error('Token da OpenAI é obrigatório');
         }
     }
 
-    // Método principal para humanizar dados de clima
-    async humanizeWeatherData(weatherData, userContext = {}) {
-        try {
-            const prompt = this.buildWeatherPrompt(weatherData, userContext);
+    // ===============================================
+    // PREPROCESSAMENTO INTELIGENTE
+    // ===============================================
 
-            const response = await this.callOpenAI(prompt);
+    preprocessMessage(message, userContext = {}) {
+        // Cache key
+        const cacheKey = `${message}_${userContext?.expertise || 'basic'}`;
+        if (this.preprocessCache.has(cacheKey)) {
+            return this.preprocessCache.get(cacheKey);
+        }
+
+        let processed = message.toLowerCase().trim();
+
+        // 1. Expandir abreviações
+        Object.entries(this.expansions).forEach(([abbr, full]) => {
+            const regex = new RegExp(`\\b${abbr}\\b`, 'gi');
+            processed = processed.replace(regex, full);
+        });
+
+        // 2. Corrigir nomes de cidades
+        Object.entries(this.cityCorrections).forEach(([wrong, correct]) => {
+            const regex = new RegExp(`\\b${wrong}\\b`, 'gi');
+            processed = processed.replace(regex, correct);
+        });
+
+        // 3. Detectar contexto implícito
+        processed = this.addImplicitContext(processed, userContext);
+
+        // 4. Normalizar duplicações
+        processed = this.removeDuplicates(processed);
+
+        const result = {
+            original: message,
+            processed: processed,
+            changes: processed !== message.toLowerCase().trim()
+        };
+
+        // Cache resultado
+        this.preprocessCache.set(cacheKey, result);
+        return result;
+    }
+
+    addImplicitContext(message, userContext) {
+        // Se mensagem vaga e tem contexto anterior
+        if (['e amanhã?', 'e depois?', 'e hoje?', 'e agora?'].includes(message) && userContext.lastCity) {
+            return `${message} em ${userContext.lastCity}`;
+        }
+
+        // Adicionar cidade padrão se não mencionada
+        if (this.isWeatherQuery(message) && !this.hasCity(message) && userContext.preferredCity) {
+            return `${message} em ${userContext.preferredCity}`;
+        }
+
+        return message;
+    }
+
+    removeDuplicates(message) {
+        // Remove palavras repetidas consecutivas
+        return message.replace(/\b(\w+)\s+\1\b/gi, '$1');
+    }
+
+    isWeatherQuery(message) {
+        const weatherWords = ['clima', 'tempo', 'temperatura', 'chuva', 'sol', 'vento'];
+        return weatherWords.some(word => message.includes(word));
+    }
+
+    hasCity(message) {
+        const cities = ['maputo', 'beira', 'nampula', 'quelimane', 'tete', 'pemba'];
+        return cities.some(city => message.includes(city));
+    }
+
+    // ===============================================
+    // ANÁLISE INTELIGENTE COM CONTEXTO
+    // ===============================================
+
+    async analyzeUserMessage(message, userContext = {}) {
+        try {
+            // 1. Preprocessar mensagem
+            const preprocessed = this.preprocessMessage(message, userContext);
+
+            // 2. Determinar nível de expertise
+            const expertiseLevel = this.determineExpertiseLevel(userContext);
+
+            // 3. Construir prompt com contexto completo
+            const prompt = this.buildContextualAnalysisPrompt(
+                preprocessed.processed,
+                userContext,
+                expertiseLevel
+            );
+
+            const response = await this.callOpenAI(prompt, 0.1);
+            const analysis = JSON.parse(response);
 
             return {
                 success: true,
-                humanizedText: response,
-                originalData: weatherData
+                analysis: {
+                    ...analysis,
+                    expertiseLevel: expertiseLevel,
+                    preprocessed: preprocessed.changes,
+                    originalMessage: message,
+                    processedMessage: preprocessed.processed
+                }
             };
 
         } catch (error) {
-            console.error('Erro ao humanizar dados do clima:', error.message);
-
-            // Fallback: retornar dados básicos se a IA falhar
+            console.error('Erro ao analisar mensagem:', error.message);
             return {
                 success: false,
-                humanizedText: this.createFallbackMessage(weatherData),
-                originalData: weatherData,
+                analysis: this.createAdvancedFallback(message, userContext),
                 error: error.message
             };
         }
     }
 
-    // Humanizar previsão de vários dias
-    async humanizeWeatherForecast(forecastData, cityName, userContext = {}) {
-        try {
-            const prompt = this.buildForecastPrompt(forecastData, cityName, userContext);
+    determineExpertiseLevel(userContext) {
+        const queryCount = userContext.queryCount || 0;
+        const complexity = userContext.preferredComplexity;
 
-            const response = await this.callOpenAI(prompt);
+        // Override manual
+        if (complexity) return complexity;
+
+        // Baseado em número de consultas
+        if (queryCount < 3) return 'basic';
+        if (queryCount < 10) return 'intermediate';
+        return 'advanced';
+    }
+
+    buildContextualAnalysisPrompt(message, userContext, expertiseLevel) {
+        const conversationHistory = userContext.conversationHistory || [];
+        const lastCity = userContext.lastCity;
+        const preferredCity = userContext.preferredCity;
+
+        return `
+Você é um analisador meteorológico avançado com memória contextual.
+
+MENSAGEM ATUAL: "${message}"
+NÍVEL DO USUÁRIO: ${expertiseLevel}
+CIDADE PREFERIDA: ${preferredCity || 'nenhuma'}
+ÚLTIMA CIDADE CONSULTADA: ${lastCity || 'nenhuma'}
+
+HISTÓRICO DE CONVERSA (últimas 3 interações):
+${conversationHistory.slice(-3).map((h, i) =>
+            `${i + 1}. "${h.message}" → ${h.intent} (${h.city || 'sem cidade'})`
+        ).join('\n') || 'Primeira interação'}
+
+PERFIL DO USUÁRIO:
+- Total de consultas: ${userContext.queryCount || 0}
+- Padrão de consultas: ${this.analyzeQueryPattern(conversationHistory)}
+- Complexidade preferida: ${expertiseLevel}
+
+RETORNE APENAS JSON:
+{
+    "type": "weather_data | weather_education | comparison | reminder | off_topic",
+    "city": "cidade_extraída",
+    "intent": "intenção_específica", 
+    "action": "ação_a_executar",
+    "confidence": 0.95,
+    "context": {
+        "isFollowUp": true/false,
+        "implicitCity": "cidade_implícita_do_contexto",
+        "timeframe": "hoje|amanha|semana",
+        "complexity": "basic|intermediate|advanced",
+        "weatherAspect": "temperatura|chuva|vento|geral"
+    },
+    "suggestions": [
+        "pergunta_relacionada_1",
+        "pergunta_relacionada_2"
+    ],
+    "userProfile": {
+        "updateExpertise": "manter|aumentar|diminuir",
+        "preferredStyle": "casual|technical|detailed"
+    }
+}
+
+EXEMPLOS CONTEXTUAIS:
+- Se disse "e amanhã?" após consulta de Maputo → "amanhã Maputo"
+- Se sempre pergunta sobre mesma cidade → use cidade padrão
+- Se é usuário avançado → suggestions mais técnicas
+        `.trim();
+    }
+
+    analyzeQueryPattern(history) {
+        if (!history || history.length < 2) return 'novo_usuario';
+
+        const cities = history.map(h => h.city).filter(Boolean);
+        const uniqueCities = [...new Set(cities)];
+
+        if (uniqueCities.length === 1) return 'cidade_fixa';
+        if (uniqueCities.length > 3) return 'multiplas_cidades';
+        return 'padrao_normal';
+    }
+
+    // ===============================================
+    // SISTEMA DE PROMPTS ESPECIALIZADOS
+    // ===============================================
+
+    async generateContextualResponse(analysis, weatherData, userContext) {
+        try {
+            const { expertiseLevel, context } = analysis;
+            const prompt = this.selectSpecializedPrompt(analysis, weatherData, userContext);
+
+            const response = await this.callOpenAI(prompt, 0.7);
+
+            // Gerar sugestões inteligentes
+            const suggestions = await this.generateIntelligentSuggestions(analysis, weatherData, userContext);
 
             return {
                 success: true,
-                humanizedText: response,
-                originalData: forecastData
+                response: response,
+                suggestions: suggestions,
+                expertiseLevel: expertiseLevel
             };
 
         } catch (error) {
-            console.error('Erro ao humanizar previsão:', error.message);
-
+            console.error('Erro ao gerar resposta contextual:', error);
             return {
                 success: false,
-                humanizedText: this.createFallbackForecast(forecastData, cityName),
-                originalData: forecastData,
+                response: this.createBasicResponse(weatherData),
+                suggestions: [],
                 error: error.message
             };
         }
     }
 
-    // Gerar recomendações personalizadas baseadas no clima
-    async generateWeatherRecommendations(weatherData, userPreferences = {}) {
-        try {
-            const prompt = this.buildRecommendationPrompt(weatherData, userPreferences);
+    selectSpecializedPrompt(analysis, weatherData, userContext) {
+        const { expertiseLevel, context, intent } = analysis;
+        const age = userContext.age || 'adulto';
 
-            const response = await this.callOpenAI(prompt);
+        const baseData = `
+DADOS METEOROLÓGICOS:
+- Cidade: ${weatherData.city}
+- Temperatura: ${weatherData.temperature}${weatherData.units}
+- Sensação: ${weatherData.feelsLike}${weatherData.units}
+- Umidade: ${weatherData.humidity}%
+- Condições: ${weatherData.description}
+        `;
 
-            return {
-                success: true,
-                recommendations: response,
-                weatherData: weatherData
-            };
+        // Prompt especializado por nível
+        switch (expertiseLevel) {
+            case 'basic':
+                return `${baseData}
 
-        } catch (error) {
-            console.error('Erro ao gerar recomendações:', error.message);
+USUÁRIO INICIANTE - LINGUAGEM SIMPLES:
+Explique o clima de forma muito simples e prática.
+- Use analogias do dia a dia
+- Evite termos técnicos
+- Foque no que a pessoa precisa saber para o dia
+- Máximo 150 palavras
+- Muitos emojis
+- Dicas práticas simples
 
-            return {
-                success: false,
-                recommendations: this.createFallbackRecommendations(weatherData),
-                error: error.message
-            };
+Resposta amigável para iniciante:`;
+
+            case 'intermediate':
+                return `${baseData}
+
+USUÁRIO INTERMEDIÁRIO - EXPLICATIVO:
+Forneça informações balanceadas com algum contexto técnico.
+- Explique o "porquê" das condições
+- Inclua comparações com ontem/média
+- Mencione tendências
+- 200-250 palavras
+- Emojis moderados
+- Dicas contextualizadas
+
+Resposta educativa para intermediário:`;
+
+            case 'advanced':
+                return `${baseData}
+
+USUÁRIO AVANÇADO - TÉCNICO:
+Análise meteorológica detalhada e técnica.
+- Use terminologia meteorológica apropriada
+- Inclua dados de pressão, sistemas climáticos
+- Análise de padrões
+- 250-300 palavras
+- Poucos emojis
+- Insights meteorológicos profundos
+
+Análise técnica para especialista:`;
+
+            default:
+                return this.selectSpecializedPrompt(
+                    { ...analysis, expertiseLevel: 'intermediate' },
+                    weatherData,
+                    userContext
+                );
         }
     }
 
-    // Chamar API da OpenAI
+    // ===============================================
+    // SUGESTÕES INTELIGENTES
+    // ===============================================
+
+    async generateIntelligentSuggestions(analysis, weatherData, userContext) {
+        try {
+            const prompt = `
+Com base nesta consulta meteorológica, gere 3 sugestões inteligentes:
+
+CONSULTA ATUAL:
+- Tipo: ${analysis.type}
+- Cidade: ${analysis.city}
+- Intenção: ${analysis.intent}
+- Usuário: ${analysis.expertiseLevel}
+
+DADOS CLIMÁTICOS:
+- Temperatura: ${weatherData.temperature}°C
+- Condições: ${weatherData.description}
+
+HISTÓRICO USUÁRIO:
+- Consultas anteriores: ${userContext.queryCount || 0}
+- Padrão: ${userContext.lastCity ? `Frequentemente consulta ${userContext.lastCity}` : 'Novo usuário'}
+
+GERE 3 SUGESTÕES RELEVANTES:
+1. Follow-up natural da consulta atual
+2. Informação complementar útil
+3. Pergunta educativa relacionada
+
+Formato: ["sugestão 1", "sugestão 2", "sugestão 3"]
+Máximo 25 caracteres por sugestão (para botões WhatsApp).
+
+Sugestões:`;
+
+            const response = await this.callOpenAI(prompt, 0.8);
+            return JSON.parse(response);
+
+        } catch (error) {
+            console.error('Erro ao gerar sugestões:', error);
+            return this.createFallbackSuggestions(analysis, weatherData);
+        }
+    }
+
+    createFallbackSuggestions(analysis, weatherData) {
+        const suggestions = [];
+
+        if (analysis.city) {
+            suggestions.push(`Previsão ${analysis.city}`);
+            suggestions.push(`Comparar cidades`);
+        }
+
+        if (weatherData.description.includes('chuva')) {
+            suggestions.push(`Vai chover amanhã?`);
+        } else if (parseInt(weatherData.temperature) > 25) {
+            suggestions.push(`Dicas para calor`);
+        } else {
+            suggestions.push(`O que é ${weatherData.description.split(' ')[0]}?`);
+        }
+
+        return suggestions.slice(0, 3);
+    }
+
+    // ===============================================
+    // COMANDOS NATURAIS AVANÇADOS
+    // ===============================================
+
+    async processAdvancedCommand(analysis, userContext) {
+        const { intent, context } = analysis;
+
+        switch (intent) {
+            case 'comparar_cidades':
+                return await this.handleCityComparison(analysis, userContext);
+
+            case 'resumo_semanal':
+                return await this.handleWeeklySummary(analysis, userContext);
+
+            case 'criar_lembrete':
+                return await this.handleReminderCreation(analysis, userContext);
+
+            case 'explicar_fenomeno':
+                return await this.handlePhenomenonExplanation(analysis, userContext);
+
+            default:
+                return null;
+        }
+    }
+
+    async handleCityComparison(analysis, userContext) {
+        const prompt = `
+Usuário quer comparar clima entre cidades.
+Análise: ${JSON.stringify(analysis)}
+Histórico: ${userContext.lastCity || 'nenhuma'}
+
+Crie uma resposta que:
+1. Pergunte quais cidades comparar (se não especificado)
+2. Ou forneça comparação se cidades foram mencionadas
+3. Use formato de tabela simples
+4. Destaque diferenças principais
+
+Resposta para comparação:`;
+
+        return await this.callOpenAI(prompt, 0.6);
+    }
+
+    async handleWeeklySummary(analysis, userContext) {
+        const prompt = `
+Usuário quer resumo semanal do tempo.
+Cidade: ${analysis.city || userContext.preferredCity}
+Nível: ${analysis.expertiseLevel}
+
+Crie um resumo que inclua:
+1. Tendência geral da semana
+2. Dias melhores/piores
+3. Recomendações para atividades
+4. Alertas importantes
+
+Formato ${analysis.expertiseLevel === 'basic' ? 'simples' : 'detalhado'}:`;
+
+        return await this.callOpenAI(prompt, 0.6);
+    }
+
+    async handleReminderCreation(analysis, userContext) {
+        return `🔔 *Lembrete Configurado!*
+
+Vou te avisar sobre mudanças climáticas em ${analysis.city || userContext.preferredCity}.
+
+⚙️ Configurações:
+• Alertas de chuva: Ativado
+• Mudanças bruscas de temperatura: Ativado  
+• Horário preferido: ${userContext.preferredNotificationTime || '08:00'}
+
+Para ajustar, digite "configurar alertas".`;
+    }
+
+    // ===============================================
+    // UTILITÁRIOS AVANÇADOS
+    // ===============================================
+
+    createAdvancedFallback(message, userContext) {
+        const preprocessed = this.preprocessMessage(message, userContext);
+
+        return {
+            type: "weather_data",
+            city: userContext.lastCity || userContext.preferredCity,
+            intent: "consulta_basica_fallback",
+            action: "fetch_current_weather",
+            confidence: 0.5,
+            context: {
+                isFollowUp: false,
+                implicitCity: userContext.preferredCity,
+                timeframe: "hoje",
+                complexity: "basic",
+                weatherAspect: "geral"
+            },
+            suggestions: ["Ajuda", "Configurações", "Histórico"],
+            userProfile: {
+                updateExpertise: "manter",
+                preferredStyle: "casual"
+            },
+            preprocessed: preprocessed.changes
+        };
+    }
+
+    createBasicResponse(weatherData) {
+        return `🌤️ ${weatherData.city}: ${weatherData.temperature}°C, ${weatherData.description}`;
+    }
+
+    // ===============================================
+    // MÉTODOS ORIGINAIS MANTIDOS
+    // ===============================================
+
     async callOpenAI(prompt, temperature = 0.7) {
         const requestData = {
             model: this.model,
             messages: [
                 {
                     role: "system",
-                    content: "Você é um assistente meteorológico amigável especializado em explicar informações climáticas de forma simples e prática para pessoas comuns. Use linguagem clara, evite jargões técnicos e inclua dicas úteis quando apropriado."
+                    content: "Você é um assistente meteorológico especializado com capacidades avançadas de contextualização e personalização de respostas."
                 },
                 {
                     role: "user",
@@ -118,179 +527,13 @@ class OPENAI {
                     'Authorization': `Bearer ${this.token}`,
                     'Content-Type': 'application/json'
                 },
-                timeout: 30000 // 30 segundos timeout
+                timeout: 30000
             }
         );
 
         return response.data.choices[0].message.content.trim();
     }
 
-    // Construir prompt para dados de clima atual
-    buildWeatherPrompt(weatherData, userContext) {
-        const context = userContext.language === 'en' ? 'em inglês' : 'em português';
-        const timeOfDay = this.getTimeOfDay();
-
-        return `
-Explique de forma amigável e compreensível as seguintes informações climáticas ${context}:
-
-DADOS DO CLIMA:
-- Cidade: ${weatherData.city}, ${weatherData.country}
-- Temperatura atual: ${weatherData.temperature}${weatherData.units}
-- Sensação térmica: ${weatherData.feelsLike}${weatherData.units}
-- Umidade: ${weatherData.humidity}%
-- Condições: ${weatherData.description}
-- Período do dia: ${timeOfDay}
-
-CONTEXTO DO USUÁRIO:
-- Localização: Moçambique
-- Público: Pessoas comuns (não meteorologistas)
-
-INSTRUÇÕES:
-1. Explique o que significam esses números na prática
-2. Compare a sensação térmica com a temperatura real
-3. Explique se a umidade está alta/baixa e o que isso significa
-4. Dê 2-3 dicas práticas para esse clima
-5. Use emojis apropriados
-6. Mantenha tom conversacional e amigável
-7. Máximo 200 palavras
-
-Exemplo do tom desejado: "O clima está agradável hoje em..." ao invés de "As condições meteorológicas indicam..."
-        `.trim();
-    }
-
-    // Construir prompt para previsão
-    buildForecastPrompt(forecastData, cityName, userContext) {
-        const context = userContext.language === 'en' ? 'em inglês' : 'em português';
-
-        const forecastSummary = forecastData.map((day, index) => {
-            const dayName = index === 0 ? 'Hoje' : index === 1 ? 'Amanhã' : `Dia ${index + 1}`;
-            return `${dayName}: ${day.minTemp}°-${day.maxTemp}°C, ${day.description}`;
-        }).join('\n');
-
-        return `
-Crie um resumo amigável da previsão do tempo ${context} para ${cityName}:
-
-PREVISÃO DOS PRÓXIMOS DIAS:
-${forecastSummary}
-
-INSTRUÇÕES:
-1. Identifique tendências (vai esquentar/esfriar, chuva chegando, etc.)
-2. Destaque os dias melhores e piores
-3. Dê dicas para a semana (quando sair, levar guarda-chuva, etc.)
-4. Use linguagem coloquial e amigável
-5. Inclua emojis relevantes
-6. Máximo 250 palavras
-7. Foque no que é mais importante para o dia a dia das pessoas
-
-Evite jargões meteorológicos. Fale como um amigo explicando o tempo.
-        `.trim();
-    }
-
-    // Construir prompt para recomendações
-    buildRecommendationPrompt(weatherData, userPreferences) {
-        return `
-Baseado nas condições climáticas abaixo, gere recomendações práticas para uma pessoa em Moçambique:
-
-CLIMA ATUAL:
-- Temperatura: ${weatherData.temperature}${weatherData.units}
-- Sensação térmica: ${weatherData.feelsLike}${weatherData.units}
-- Umidade: ${weatherData.humidity}%
-- Condições: ${weatherData.description}
-
-PREFERÊNCIAS DO USUÁRIO:
-- Atividades: ${userPreferences.activities || 'atividades gerais'}
-- Tipo de trabalho: ${userPreferences.workType || 'não especificado'}
-
-GERE RECOMENDAÇÕES PARA:
-1. Roupas adequadas
-2. Atividades ao ar livre
-3. Cuidados com a saúde
-4. Melhor horário para sair
-5. O que levar na bolsa/mochila
-
-Use linguagem simples e dicas práticas. Máximo 200 palavras.
-        `.trim();
-    }
-
-    // Mensagem de fallback se a IA falhar
-    createFallbackMessage(weatherData) {
-        const emoji = this.getWeatherEmoji(weatherData.description);
-
-        return `${emoji} *Clima em ${weatherData.city}*\n\n` +
-            `🌡️ A temperatura está em ${weatherData.temperature}${weatherData.units}, ` +
-            `com sensação de ${weatherData.feelsLike}${weatherData.units}.\n\n` +
-            `💧 A umidade está em ${weatherData.humidity}%. ` +
-            `As condições atuais são: ${weatherData.description}.\n\n` +
-            `💡 *Dica:* ${this.getBasicTip(weatherData)}`;
-    }
-
-    // Previsão de fallback
-    createFallbackForecast(forecastData, cityName) {
-        let message = `📅 *Previsão para ${cityName}*\n\n`;
-
-        forecastData.slice(0, 3).forEach((day, index) => {
-            const dayName = index === 0 ? 'Hoje' : index === 1 ? 'Amanhã' : 'Depois';
-            const emoji = this.getWeatherEmoji(day.description);
-            message += `${emoji} ${dayName}: ${day.minTemp}° a ${day.maxTemp}°, ${day.description}\n`;
-        });
-
-        return message;
-    }
-
-    // Recomendações básicas de fallback
-    createFallbackRecommendations(weatherData) {
-        const temp = parseInt(weatherData.temperature);
-        let recommendations = "💡 *Recomendações para hoje:*\n\n";
-
-        if (temp > 30) {
-            recommendations += "🌡️ Calor forte: Use roupas leves, beba água, evite sol das 11h-15h\n";
-        } else if (temp > 25) {
-            recommendations += "🌤️ Clima agradável: Ótimo para atividades ao ar livre\n";
-        } else if (temp > 20) {
-            recommendations += "👕 Temperatura amena: Leve uma blusa leve\n";
-        } else {
-            recommendations += "🧥 Clima fresco: Use casaco, especialmente à noite\n";
-        }
-
-        if (weatherData.humidity > 80) {
-            recommendations += "💧 Umidade alta: Ar pode estar abafado\n";
-        }
-
-        if (weatherData.description.toLowerCase().includes('chuva')) {
-            recommendations += "☔ Leve guarda-chuva ou capa de chuva";
-        }
-
-        return recommendations;
-    }
-
-    // Utilitários
-    getTimeOfDay() {
-        const hour = new Date().getHours();
-        if (hour < 6) return 'madrugada';
-        if (hour < 12) return 'manhã';
-        if (hour < 18) return 'tarde';
-        return 'noite';
-    }
-
-    getWeatherEmoji(description) {
-        const desc = description.toLowerCase();
-        if (desc.includes('sol') || desc.includes('clear')) return '☀️';
-        if (desc.includes('chuva') || desc.includes('rain')) return '🌧️';
-        if (desc.includes('nuvem') || desc.includes('cloud')) return '☁️';
-        if (desc.includes('tempest') || desc.includes('storm')) return '⛈️';
-        return '🌤️';
-    }
-
-    getBasicTip(weatherData) {
-        const temp = parseInt(weatherData.temperature);
-
-        if (temp > 30) return "Mantenha-se hidratado e procure sombra!";
-        if (temp > 25) return "Ótimo clima para atividades ao ar livre!";
-        if (temp > 20) return "Temperatura agradável, talvez uma blusa leve seja boa ideia.";
-        return "Vista algo mais quente, especialmente à noite.";
-    }
-
-    // Método para testar conexão
     async testConnection() {
         try {
             const testPrompt = "Diga apenas 'Conexão OK' se você está funcionando.";
@@ -309,186 +552,6 @@ Use linguagem simples e dicas práticas. Máximo 200 palavras.
                 error: error.message
             };
         }
-    }
-
-
-    // Método principal para analisar intenção do usuário
-    async analyzeUserMessage(message, userContext = {}) {
-        try {
-            const prompt = this.buildAnalysisPrompt(message, userContext);
-
-            const response = await this.callOpenAI(prompt, 0.1); // Temperatura baixa para consistência
-
-            // Parse da resposta JSON
-            const analysis = JSON.parse(response);
-
-            return {
-                success: true,
-                analysis: analysis,
-                originalMessage: message
-            };
-
-        } catch (error) {
-            console.error('Erro ao analisar mensagem:', error.message);
-
-            // Fallback simples se IA falhar
-            return {
-                success: false,
-                analysis: this.createFallbackAnalysis(message),
-                originalMessage: message,
-                error: error.message
-            };
-        }
-    }
-
-    // Construir prompt para análise de intenção
-    buildAnalysisPrompt(message, userContext) {
-        const defaultCity = userContext.preferredCity || null;
-        const language = userContext.language || 'pt';
-
-        return `
-Você é um analisador especializado em meteorologia. Analise a mensagem do usuário e retorne APENAS um JSON válido com a estrutura exata abaixo:
-
-MENSAGEM DO USUÁRIO: "${message}"
-CIDADE PADRÃO DO USUÁRIO: ${defaultCity || "nenhuma"}
-IDIOMA: ${language}
-
-RETORNE APENAS ESTE JSON (sem explicações):
-{
-    "type": "weather_data | weather_education | off_topic",
-    "city": "nome_da_cidade_mencionada | null",
-    "intent": "descrição_breve_da_intenção",
-    "action": "fetch_current_weather | fetch_forecast | provide_explanation | redirect_to_weather",
-    "confidence": 0.95,
-    "extracted_info": {
-        "mentioned_time": "hoje | amanha | null",
-        "weather_aspect": "temperatura | chuva | vento | geral | null",
-        "question_type": "current_data | future_data | explanation | null"
-    }
-}
-
-REGRAS:
-1. Se a mensagem é sobre dados meteorológicos (clima atual, previsão, temperatura) → type: "weather_data"
-2. Se é pergunta educativa sobre meteorologia (o que é umidade, como funciona, etc) → type: "weather_education"  
-3. Se não é sobre meteorologia → type: "off_topic"
-4. Se cidade não mencionada mas usuário tem padrão → use a cidade padrão
-5. intent deve ser claro e específico
-6. confidence entre 0.0 e 1.0
-
-EXEMPLOS:
-"Clima em Maputo" → {"type": "weather_data", "city": "Maputo", "intent": "consultar_clima_atual", "action": "fetch_current_weather"}
-"O que é umidade?" → {"type": "weather_education", "city": null, "intent": "explicar_umidade", "action": "provide_explanation"}
-"Como fazer bolo?" → {"type": "off_topic", "city": null, "intent": "receita_culinaria", "action": "redirect_to_weather"}
-    `.trim();
-    }
-
-    // Criar análise fallback se IA falhar
-    createFallbackAnalysis(message) {
-        const lowerMessage = message.toLowerCase();
-
-        // Detectar palavras meteorológicas
-        const weatherKeywords = ['clima', 'tempo', 'temperatura', 'chuva', 'sol', 'vento', 'umidade', 'previsao'];
-        const educationalKeywords = ['que', 'como', 'porque', 'por que', 'explique', 'significa'];
-
-        const isWeatherRelated = weatherKeywords.some(keyword => lowerMessage.includes(keyword));
-        const isEducational = educationalKeywords.some(keyword => lowerMessage.includes(keyword));
-
-        if (isWeatherRelated && isEducational) {
-            return {
-                type: "weather_education",
-                city: null,
-                intent: "pergunta_educativa_meteorologia",
-                action: "provide_explanation",
-                confidence: 0.6,
-                extracted_info: {
-                    mentioned_time: null,
-                    weather_aspect: "geral",
-                    question_type: "explanation"
-                }
-            };
-        } else if (isWeatherRelated) {
-            return {
-                type: "weather_data",
-                city: this.extractCityFallback(message),
-                intent: "consulta_dados_meteorologicos",
-                action: "fetch_current_weather",
-                confidence: 0.7,
-                extracted_info: {
-                    mentioned_time: lowerMessage.includes('amanha') ? 'amanha' : 'hoje',
-                    weather_aspect: "geral",
-                    question_type: "current_data"
-                }
-            };
-        } else {
-            return {
-                type: "off_topic",
-                city: null,
-                intent: "topico_nao_meteorologico",
-                action: "redirect_to_weather",
-                confidence: 0.8,
-                extracted_info: {
-                    mentioned_time: null,
-                    weather_aspect: null,
-                    question_type: null
-                }
-            };
-        }
-    }
-
-    // Extração simples de cidade para fallback
-    extractCityFallback(message) {
-        const cities = ['maputo', 'beira', 'nampula', 'quelimane', 'tete', 'lichinga', 'pemba'];
-        const lowerMessage = message.toLowerCase();
-
-        for (const city of cities) {
-            if (lowerMessage.includes(city)) {
-                return city.charAt(0).toUpperCase() + city.slice(1);
-            }
-        }
-
-        return null;
-    }
-
-    // Método para testar a análise
-    async testMessageAnalysis() {
-        const testMessages = [
-            "Como está temperatura em Maputo",
-            "Vai chover amanhã?",
-            "O que é umidade relativa?",
-            "Como fazer bolo?",
-            "Previsão para Beira",
-            "Por que chove?"
-        ];
-
-        console.log("🧪 Testando análise de mensagens...\n");
-
-        for (const message of testMessages) {
-            try {
-                const result = await this.analyzeUserMessage(message);
-                console.log(`📝 "${message}"`);
-                console.log(`📊 Resultado:`, JSON.stringify(result.analysis, null, 2));
-                console.log("---");
-            } catch (error) {
-                console.error(`❌ Erro ao testar "${message}":`, error.message);
-            }
-        }
-    }
-
-    async simpleTest(msg) {
-        const result = await this.analyzeUserMessage(msg);
-        console.log(`📝 "${msg}"`);
-        console.log(`📊 Resultado:`, JSON.stringify(result.analysis, null, 2));
-        console.log("---");
-    }
-
-    // Configurar modelo (gpt-3.5-turbo, gpt-4, etc.)
-    setModel(model) {
-        this.model = model;
-    }
-
-    // Configurar máximo de tokens
-    setMaxTokens(maxTokens) {
-        this.maxTokens = maxTokens;
     }
 }
 
