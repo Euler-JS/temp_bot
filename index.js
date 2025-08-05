@@ -129,7 +129,7 @@ async function processAdvancedTextMessage(messageText, phoneNumber) {
 
     // 4. Enviar sugestões inteligentes se apropriado
     if (analysis.suggestions && analysis.suggestions.length > 0) {
-      await sendIntelligentSuggestions(phoneNumber, analysis.suggestions, analysis.city);
+      // await sendIntelligentSuggestions(phoneNumber, analysis.suggestions, analysis.city);
     }
 
   } catch (error) {
