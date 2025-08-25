@@ -7,7 +7,200 @@ class WhatsAppApi {
     constructor(token, phoneNumberID) {
         this.token = token;
         this.phoneNumberID = phoneNumberID;
+        this.tokenExpirationTime = null;
+        this.isRefreshing = false;
+        this.refreshPromise = null;
         // console.log('WhatsAppApi initialized with token:', this.token, 'and phoneNumberID:', this.phoneNumberID);
+    }
+
+    // ===============================================
+    // SISTEMA DE RENOVAÇÃO AUTOMÁTICA DO TOKEN
+    // ===============================================
+
+    // Método para atualizar o token
+    updateToken(newToken) {
+        this.token = newToken;
+        this.tokenExpirationTime = Date.now() + (60 * 60 * 1000); // 1 hora
+        console.log('✅ Token atualizado com sucesso');
+    }
+
+    // Detecta se o token expirou baseado na resposta da API
+    isTokenExpired(error) {
+        if (!error || !error.response) return false;
+
+        const status = error.response.status;
+        const data = error.response.data;
+
+        // Códigos de erro que indicam token expirado/inválido
+        const expiredErrorCodes = [401, 403];
+        const expiredMessages = [
+            'invalid access token',
+            'access token has expired',
+            'token is invalid',
+            'authentication failed'
+        ];
+
+        if (expiredErrorCodes.includes(status)) return true;
+
+        if (data && typeof data === 'object') {
+            const errorMessage = JSON.stringify(data).toLowerCase();
+            return expiredMessages.some(msg => errorMessage.includes(msg));
+        }
+
+        return false;
+    }
+
+    // Renovar token usando Facebook Graph API
+    async renewToken() {
+        if (this.isRefreshing) {
+            // Se já está renovando, aguarda a renovação atual
+            return this.refreshPromise;
+        }
+
+        this.isRefreshing = true;
+        console.log('🔄 Iniciando renovação do token...');
+
+        this.refreshPromise = this._performTokenRenewal();
+
+        try {
+            const result = await this.refreshPromise;
+            return result;
+        } finally {
+            this.isRefreshing = false;
+            this.refreshPromise = null;
+        }
+    }
+
+    async _performTokenRenewal() {
+        try {
+            const appId = process.env.FACEBOOK_APP_ID;
+            const appSecret = process.env.FACEBOOK_APP_SECRET;
+
+            console.log('🔍 Verificando configurações de renovação...');
+            console.log('📱 App ID disponível:', appId ? '✅' : '❌');
+            console.log('🔐 App Secret disponível:', appSecret ? '✅' : '❌');
+            console.log('🔄 Refresh Token disponível:', process.env.FACEBOOK_REFRESH_TOKEN ? '✅' : '❌');
+
+            if (!appId || !appSecret) {
+                throw new Error('Facebook App ID e App Secret são necessários para renovar o token. Configure FACEBOOK_APP_ID e FACEBOOK_APP_SECRET no .env');
+            }
+
+            // Método 1: Usar refresh token se disponível
+            if (process.env.FACEBOOK_REFRESH_TOKEN) {
+                console.log('🔄 Tentando renovar com refresh token...');
+                const newToken = await this._renewWithRefreshToken(appId, appSecret);
+                if (newToken) {
+                    this.updateToken(newToken);
+                    return newToken;
+                }
+            }
+
+            // Método 2: Trocar token de curta duração por longa duração
+            console.log('🔄 Tentando estender token de longa duração...');
+            const extendedToken = await this._extendAccessToken(appId, appSecret);
+            if (extendedToken) {
+                this.updateToken(extendedToken);
+                return extendedToken;
+            }
+
+            throw new Error('Não foi possível renovar o token automaticamente');
+
+        } catch (error) {
+            console.error('❌ Erro ao renovar token:', error.message);
+            throw error;
+        }
+    }
+
+    async _renewWithRefreshToken(appId, appSecret) {
+        try {
+            const response = await axios.post('https://graph.facebook.com/oauth/access_token', {
+                grant_type: 'refresh_token',
+                refresh_token: process.env.FACEBOOK_REFRESH_TOKEN,
+                client_id: appId,
+                client_secret: appSecret
+            });
+
+            return response.data.access_token;
+        } catch (error) {
+            console.log('⚠️ Renovação com refresh token falhou:', error.message);
+            return null;
+        }
+    }
+
+    async _extendAccessToken(appId, appSecret) {
+        try {
+            const response = await axios.get('https://graph.facebook.com/oauth/access_token', {
+                params: {
+                    grant_type: 'fb_exchange_token',
+                    client_id: appId,
+                    client_secret: appSecret,
+                    fb_exchange_token: this.token
+                }
+            });
+
+            return response.data.access_token;
+        } catch (error) {
+            console.log('⚠️ Extensão do token falhou:', error.message);
+
+            // Log adicional para debug
+            if (error.response) {
+                console.log('📊 Status da resposta:', error.response.status);
+                console.log('📄 Dados da resposta:', JSON.stringify(error.response.data, null, 2));
+            }
+
+            return null;
+        }
+    }
+
+    // Wrapper para requisições com renovação automática
+    async makeAuthenticatedRequest(requestFn) {
+        try {
+            return await requestFn();
+        } catch (error) {
+            if (this.isTokenExpired(error)) {
+                console.log('🔄 Token expirado detectado, tentando renovar...');
+
+                try {
+                    await this.renewToken();
+                    console.log('✅ Token renovado com sucesso, tentando novamente...');
+                    return await requestFn();
+                } catch (renewError) {
+                    console.error('❌ Falha na renovação automática:', renewError.message);
+                    console.log('⚠️ Continuando com token atual. Verifique as configurações do Facebook App.');
+
+                    // Em vez de falhar completamente, tenta enviar com o token atual
+                    // e retorna um erro mais informativo
+                    throw new Error(`Token possivelmente expirado. Verifique o token manualmente. Erro original: ${error.message}`);
+                }
+            }
+            throw error;
+        }
+    }
+
+    // Método alternativo que tenta enviar sem renovação automática
+    async sendMessageWithoutAutoRenewal(mensagem, numeroCelular) {
+        try {
+            const response = await axios.post(
+                `https://graph.facebook.com/v21.0/${this.phoneNumberID}/messages`,
+                {
+                    messaging_product: "whatsapp",
+                    to: numeroCelular,
+                    text: { body: mensagem }
+                },
+                {
+                    headers: {
+                        Authorization: `Bearer ${this.token}`,
+                        "Content-Type": "application/json"
+                    }
+                }
+            );
+
+            console.log('✅ Mensagem enviada com sucesso (sem renovação automática)');
+            return response.data;
+        } catch (error) {
+            console.log('❌ Falha ao enviar mensagem:', error.message);
+            throw error;
+        }
     }
 
     // Método principal para enviar mensagens de texto
@@ -27,20 +220,34 @@ class WhatsAppApi {
         const messageData = mensagem;
 
         try {
-            const response = await axios.post(
-                `https://graph.facebook.com/v19.0/${this.phoneNumberID}/messages`,
-                messageData,
-                {
-                    headers: {
-                        'Authorization': `Bearer ${this.token}`,
-                        'Content-Type': 'application/json'
+            return await this.makeAuthenticatedRequest(async () => {
+                const response = await axios.post(
+                    `https://graph.facebook.com/v19.0/${this.phoneNumberID}/messages`,
+                    messageData,
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${this.token}`,
+                            'Content-Type': 'application/json'
+                        }
                     }
-                }
-            );
-            console.log('Message sent successfully:', response.data);
-            return response.data;
+                );
+                console.log('Message sent successfully:', response.data);
+                return response.data;
+            });
         } catch (error) {
-            console.error('Error sending message:', error.response ? error.response.data : error.message);
+            // Se a renovação automática falhar, tenta enviar direto
+            if (error.message.includes('Token possivelmente expirado')) {
+                console.log('⚠️ Tentando enviar mensagem sem renovação automática...');
+                try {
+                    return await this.sendMessageWithoutAutoRenewal(
+                        typeof mensagem === 'string' ? mensagem : mensagem.text.body,
+                        numeroCelular
+                    );
+                } catch (fallbackError) {
+                    console.log('❌ Fallback também falhou:', fallbackError.message);
+                    throw new Error(`Falha ao enviar mensagem. Verifique se o token WhatsApp está válido. Erro: ${fallbackError.message}`);
+                }
+            }
             throw error;
         }
     }
@@ -59,7 +266,7 @@ class WhatsAppApi {
             }
         };
 
-        try {
+        return await this.makeAuthenticatedRequest(async () => {
             const response = await axios.post(
                 `https://graph.facebook.com/v19.0/${this.phoneNumberID}/messages`,
                 messageData,
@@ -72,15 +279,12 @@ class WhatsAppApi {
             );
             console.log("Template message sent successfully:", response.data);
             return response.data;
-        } catch (error) {
-            console.error("Error sending template message:", error.response ? error.response.data : error.message);
-            throw error;
-        }
+        });
     }
 
     // Método principal para enviar mensagens interativas
     async enviarMensagemInterativaUsandoWhatsappAPI(mensagemInterativa) {
-        try {
+        return await this.makeAuthenticatedRequest(async () => {
             const response = await axios.post(
                 `https://graph.facebook.com/v19.0/${this.phoneNumberID}/messages`,
                 mensagemInterativa,
@@ -93,10 +297,7 @@ class WhatsAppApi {
             );
             console.log('Interactive message sent successfully:', response.data);
             return response.data;
-        } catch (error) {
-            console.error('Error sending interactive message:', error.response ? error.response.data : error.message);
-            throw error;
-        }
+        });
     }
 
     // **NOVO** - Menu de configurações do Temperature Bot
