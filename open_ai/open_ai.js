@@ -154,6 +154,15 @@ class OPENAI {
     }
 
     determineExpertiseLevel(userContext) {
+        // Verificar se a progressão de expertise está habilitada
+        const enableProgression = process.env.ENABLE_EXPERTISE_PROGRESSION === 'true';
+        const defaultLevel = process.env.DEFAULT_EXPERTISE_LEVEL || 'basic';
+
+        // Se a progressão estiver desabilitada, sempre retorna o nível padrão
+        if (!enableProgression) {
+            return defaultLevel;
+        }
+
         const queryCount = userContext.queryCount || 0;
         const complexity = userContext.preferredComplexity;
 
@@ -191,7 +200,7 @@ PERFIL DO USUÁRIO:
 
 RETORNE APENAS JSON:
 {
-    "type": "weather_data | weather_education | comparison | reminder | off_topic",
+    "type": "weather_data | weather_education | comparison | practical_tips | reminder | off_topic",
     "city": "cidade_extraída",
     "intent": "intenção_específica", 
     "action": "ação_a_executar",
@@ -217,6 +226,19 @@ EXEMPLOS CONTEXTUAIS:
 - Se disse "e amanhã?" após consulta de Maputo → "amanhã Maputo"
 - Se sempre pergunta sobre mesma cidade → use cidade padrão
 - Se é usuário avançado → suggestions mais técnicas
+
+RECONHECIMENTO DE TIMEFRAMES:
+- "7 dias", "próximos 7 dias", "semana", "semanal" → timeframe: "semana"
+- "amanhã", "manhã", "dia seguinte" → timeframe: "amanha" 
+- "hoje", "agora", "atual" → timeframe: "hoje"
+- "próxima semana", "previsão longa" → timeframe: "semana"
+
+RECONHECIMENTO DE DICAS PRÁTICAS (type: "practical_tips"):
+- "que roupa usar", "como me vestir", "o que vestir" → practical_tips
+- "dicas para calor", "dicas para frio", "como se proteger" → practical_tips  
+- "preciso de guarda-chuva", "vai chover", "devo levar chuva" → practical_tips
+- "atividades para hoje", "o que fazer", "exercícios" → practical_tips
+- "melhor hora para sair", "quando sair" → practical_tips
         `.trim();
     }
 
@@ -267,19 +289,39 @@ EXEMPLOS CONTEXTUAIS:
         const { expertiseLevel, context, intent } = analysis;
         const age = userContext.age || 'adulto';
 
-        const baseData = `
-DADOS METEOROLÓGICOS:
+        // Verificar se são dados de previsão ou atuais
+        let baseData;
+        if (weatherData.isForecast) {
+            baseData = `
+PREVISÃO METEOROLÓGICA PARA AMANHÃ:
+- Cidade: ${weatherData.city}
+- Data: ${weatherData.date}
+- Temperatura Máxima: ${weatherData.maxTemp}${weatherData.units}
+- Temperatura Mínima: ${weatherData.minTemp}${weatherData.units}
+- Temperatura Média: ${weatherData.temperature}${weatherData.units}
+- Condições Previstas: ${weatherData.description}
+            `;
+        } else {
+            baseData = `
+DADOS METEOROLÓGICOS ATUAIS:
 - Cidade: ${weatherData.city}
 - Temperatura: ${weatherData.temperature}${weatherData.units}
 - Sensação: ${weatherData.feelsLike}${weatherData.units}
 - Umidade: ${weatherData.humidity}%
 - Condições: ${weatherData.description}
-        `;
+            `;
+        }
 
         // Prompt especializado por nível
+        const forecastInstructions = weatherData.isForecast ?
+            "IMPORTANTE: Esta é uma PREVISÃO para AMANHÃ. Deixe isso claro na resposta e use linguagem futura." :
+            "IMPORTANTE: Estes são dados ATUAIS de HOJE. Use linguagem presente.";
+
         switch (expertiseLevel) {
             case 'basic':
                 return `${baseData}
+
+${forecastInstructions}
 
 USUÁRIO INICIANTE - LINGUAGEM SIMPLES:
 Explique o clima de forma muito simples e prática.
@@ -295,6 +337,8 @@ Resposta amigável para iniciante:`;
             case 'intermediate':
                 return `${baseData}
 
+${forecastInstructions}
+
 USUÁRIO INTERMEDIÁRIO - EXPLICATIVO:
 Forneça informações balanceadas com algum contexto técnico.
 - Explique o "porquê" das condições
@@ -308,6 +352,8 @@ Resposta educativa para intermediário:`;
 
             case 'advanced':
                 return `${baseData}
+
+${forecastInstructions}
 
 USUÁRIO AVANÇADO - TÉCNICO:
 Análise meteorológica detalhada e técnica.
@@ -335,30 +381,42 @@ Análise técnica para especialista:`;
 
     async generateIntelligentSuggestions(analysis, weatherData, userContext) {
         try {
+            const timeContext = weatherData.isForecast ? "previsão para amanhã" : "dados atuais";
             const prompt = `
-Com base nesta consulta meteorológica, gere 3 sugestões inteligentes:
+Com base nesta consulta meteorológica, gere 3 sugestões inteligentes e úteis:
 
 CONSULTA ATUAL:
-- Tipo: ${analysis.type}
+- Tipo: ${analysis.type} (${timeContext})
 - Cidade: ${analysis.city}
 - Intenção: ${analysis.intent}
-- Usuário: ${analysis.expertiseLevel}
+- Nível usuário: ${analysis.expertiseLevel}
 
 DADOS CLIMÁTICOS:
-- Temperatura: ${weatherData.temperature}°C
+${weatherData.isForecast ?
+                    `- Temperatura: ${weatherData.minTemp}°C - ${weatherData.maxTemp}°C (amanhã)` :
+                    `- Temperatura: ${weatherData.temperature}°C (atual)`}
 - Condições: ${weatherData.description}
 
 HISTÓRICO USUÁRIO:
 - Consultas anteriores: ${userContext.queryCount || 0}
-- Padrão: ${userContext.lastCity ? `Frequentemente consulta ${userContext.lastCity}` : 'Novo usuário'}
+- Cidade frequente: ${userContext.lastCity || 'N/A'}
 
-GERE 3 SUGESTÕES RELEVANTES:
-1. Follow-up natural da consulta atual
-2. Informação complementar útil
-3. Pergunta educativa relacionada
+OPÇÕES DE SUGESTÕES DISPONÍVEIS:
+1. Previsões: "Tempo amanhã", "Previsão 7 dias", "Próxima semana"
+2. Comparações: "Comparar cidades", "Como estava ontem"
+3. Atividades: "Que roupa usar", "Atividades hoje", "Dicas calor"
+4. Alertas: "Alertas chuva", "Quando chover"
+5. Educativas: "O que é umidade", "Como ler clima"
+6. Práticas: "Dicas frio", "Proteção UV", "Hidratação"
+
+REGRAS IMPORTANTES:
+- MÁXIMO 15 caracteres por sugestão (para caber nos botões)
+- Use termos simples e diretos
+- Priorize relevância para situação atual
+- Misture tipos diferentes de sugestões
+- Use linguagem natural e simples
 
 Formato: ["sugestão 1", "sugestão 2", "sugestão 3"]
-Máximo 25 caracteres por sugestão (para botões WhatsApp).
 
 Sugestões:`;
 
@@ -373,19 +431,35 @@ Sugestões:`;
 
     createFallbackSuggestions(analysis, weatherData) {
         const suggestions = [];
+        const city = analysis.city;
 
-        if (analysis.city) {
-            suggestions.push(`Previsão ${analysis.city}`);
-            suggestions.push(`Comparar cidades`);
-        }
-
-        if (weatherData.description.includes('chuva')) {
-            suggestions.push(`Vai chover amanhã?`);
-        } else if (parseInt(weatherData.temperature) > 25) {
-            suggestions.push(`Dicas para calor`);
+        // Sugestões baseadas no contexto atual
+        if (weatherData.isForecast) {
+            suggestions.push(`Previsão 7 dias`);
+            suggestions.push(`Tempo hoje`);
+            suggestions.push(`Que roupa usar`);
         } else {
-            suggestions.push(`O que é ${weatherData.description.split(' ')[0]}?`);
+            suggestions.push(`Tempo amanhã`);
+            suggestions.push(`Previsão 7 dias`);
+            suggestions.push(`Que roupa usar`);
         }
+
+        // Sugestões baseadas nas condições climáticas
+        if (weatherData.description.toLowerCase().includes('chuva')) {
+            suggestions.push(`Vai chover amanhã?`);
+            suggestions.push(`Dicas para chuva`);
+        } else if (parseInt(weatherData.temperature) > 30) {
+            suggestions.push(`Dicas para calor`);
+            suggestions.push(`Atividades frescas`);
+        } else if (parseInt(weatherData.temperature) < 15) {
+            suggestions.push(`Dicas para frio`);
+            suggestions.push(`Atividades quentes`);
+        }
+
+        // Sugestões de funcionalidades avançadas
+        suggestions.push(`Comparar cidades`);
+        suggestions.push(`Alertas clima`);
+        suggestions.push(`Atividades hoje`);
 
         return suggestions.slice(0, 3);
     }
@@ -492,6 +566,9 @@ Para ajustar, digite "configurar alertas".`;
     }
 
     createBasicResponse(weatherData) {
+        if (weatherData.isForecast) {
+            return `🌤️ Previsão para amanhã em ${weatherData.city}: ${weatherData.minTemp}°C - ${weatherData.maxTemp}°C, ${weatherData.description}`;
+        }
         return `🌤️ ${weatherData.city}: ${weatherData.temperature}°C, ${weatherData.description}`;
     }
 

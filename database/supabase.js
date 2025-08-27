@@ -69,6 +69,7 @@ class SupabaseService {
 
             } else {
                 // Novo usuário - criar perfil completo
+                const defaultLevel = process.env.DEFAULT_EXPERTISE_LEVEL || 'basic';
                 const newUser = {
                     contact,
                     preferred_city: null,
@@ -76,8 +77,8 @@ class SupabaseService {
                     language: 'pt',
                     notifications: false,
                     query_count: 1,
-                    expertise_level: 'basic',
-                    preferred_complexity: 'basic',
+                    expertise_level: defaultLevel,
+                    preferred_complexity: defaultLevel,
                     conversation_history: [],
                     last_city: null,
                     preferred_notification_time: '08:00',
@@ -124,13 +125,16 @@ class SupabaseService {
             if (!user) return false;
 
             // Preparar novo item do histórico
+            const defaultLevel = process.env.DEFAULT_EXPERTISE_LEVEL || 'basic';
+            const enableProgression = process.env.ENABLE_EXPERTISE_PROGRESSION === 'true';
+
             const newHistoryItem = {
                 timestamp: new Date().toISOString(),
                 message: message,
                 intent: analysis.intent,
                 city: analysis.city,
                 type: analysis.type,
-                expertise_level: analysis.expertiseLevel,
+                expertise_level: enableProgression ? analysis.expertiseLevel : defaultLevel,
                 response_length: response?.length || 0
             };
 
@@ -238,7 +242,16 @@ class SupabaseService {
     // ===============================================
 
     calculateExpertiseLevel(queryCount, analysis) {
-        // Lógica de progressão automática
+        // Verificar se a progressão de expertise está habilitada
+        const enableProgression = process.env.ENABLE_EXPERTISE_PROGRESSION === 'true';
+        const defaultLevel = process.env.DEFAULT_EXPERTISE_LEVEL || 'basic';
+
+        // Se a progressão estiver desabilitada, sempre retorna o nível padrão
+        if (!enableProgression) {
+            return defaultLevel;
+        }
+
+        // Lógica de progressão automática (só executa se estiver habilitada)
         if (queryCount >= 3 && queryCount < 10) {
             return 'intermediate';
         } else if (queryCount >= 10) {

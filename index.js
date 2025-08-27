@@ -129,7 +129,7 @@ async function processAdvancedTextMessage(messageText, phoneNumber) {
 
     // 4. Enviar sugestões inteligentes se apropriado
     if (analysis.suggestions && analysis.suggestions.length > 0) {
-      // await sendIntelligentSuggestions(phoneNumber, analysis.suggestions, analysis.city);
+      await sendIntelligentSuggestions(phoneNumber, analysis.suggestions, analysis.city);
     }
 
   } catch (error) {
@@ -153,6 +153,9 @@ async function routeAdvancedRequest(analysis, originalMessage, phoneNumber, user
     case 'comparison':
       return await handleCityComparison(analysis, phoneNumber, user);
 
+    case 'practical_tips':
+      return await handlePracticalTips(analysis, phoneNumber, user);
+
     case 'reminder':
       return await handleReminderRequest(analysis, phoneNumber, user);
 
@@ -171,7 +174,7 @@ async function routeAdvancedRequest(analysis, originalMessage, phoneNumber, user
 
 async function handleAdvancedWeatherData(analysis, phoneNumber, user) {
   try {
-    const { city, action, context } = analysis;
+    const { city, action, context, intent } = analysis;
     let targetCity = city || user?.preferred_city;
 
     if (!targetCity) {
@@ -182,15 +185,48 @@ async function handleAdvancedWeatherData(analysis, phoneNumber, user) {
       return null;
     }
 
+    // Verificar se é uma previsão de 7 dias
+    if (context?.timeframe === 'semana' || intent === 'previsao_7_dias' ||
+      analysis.originalMessage?.toLowerCase().includes('7 dias') ||
+      analysis.originalMessage?.toLowerCase().includes('semanal')) {
+      return await handleWeeklyForecast(targetCity, phoneNumber, user);
+    }
+
     // Mensagem de loading contextual
     const loadingMsg = getContextualLoadingMessage(context, targetCity);
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(loadingMsg, phoneNumber);
 
-    // Buscar dados meteorológicos
-    const weatherData = await weatherService.getCurrentWeather(
-      targetCity,
-      user?.units || 'celsius'
-    );
+    // Buscar dados meteorológicos baseado no timeframe
+    let weatherData;
+    const timeframe = context?.timeframe;
+
+    if (timeframe === 'amanha') {
+      // Buscar previsão para amanhã
+      const forecast = await weatherService.getWeatherForecast(targetCity, 2);
+      if (forecast && forecast.length > 1) {
+        const tomorrowData = forecast[1]; // Índice 1 = amanhã
+        weatherData = {
+          city: targetCity,
+          temperature: Math.round((tomorrowData.maxTemp + tomorrowData.minTemp) / 2),
+          maxTemp: tomorrowData.maxTemp,
+          minTemp: tomorrowData.minTemp,
+          description: tomorrowData.description,
+          icon: tomorrowData.icon,
+          units: user?.units === 'fahrenheit' ? '°F' : '°C',
+          date: tomorrowData.date,
+          isForecast: true,
+          source: 'Forecast'
+        };
+      } else {
+        throw new Error('Não foi possível obter a previsão para amanhã');
+      }
+    } else {
+      // Buscar dados atuais
+      weatherData = await weatherService.getCurrentWeather(
+        targetCity,
+        user?.units || 'celsius'
+      );
+    }
 
     // Gerar resposta contextual com IA
     const contextualResponse = await openaiService.generateContextualResponse(
@@ -276,6 +312,122 @@ Máximo ${expertiseLevel === 'basic' ? '200' : expertiseLevel === 'intermediate'
     console.error('❌ Erro em educação avançada:', error);
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(
       "📚 Desculpe, não consegui preparar a explicação no momento. Tente reformular sua pergunta.",
+      phoneNumber
+    );
+    return null;
+  }
+}
+
+async function handleWeeklyForecast(city, phoneNumber, user) {
+  try {
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      `📅 Buscando previsão completa de 7 dias para ${city}...`,
+      phoneNumber
+    );
+
+    // Buscar previsão de 7 dias
+    const forecast = await weatherService.getWeatherForecast(city, 7);
+
+    if (!forecast || forecast.length === 0) {
+      throw new Error('Não foi possível obter a previsão de 7 dias');
+    }
+
+    // Gerar resposta baseada no nível do usuário
+    const expertiseLevel = user?.expertise_level || 'basic';
+    let message = `📅 *Previsão de 7 dias - ${city}*\n\n`;
+
+    if (expertiseLevel === 'basic') {
+      // Versão simples
+      forecast.forEach((day, index) => {
+        const dayName = index === 0 ? 'Hoje' :
+          index === 1 ? 'Amanhã' :
+            `${new Date(day.date).toLocaleDateString('pt-BR', { weekday: 'short' })}`;
+
+        message += `${dayName}: ${day.minTemp}°C - ${day.maxTemp}°C, ${day.description}\n`;
+      });
+    } else {
+      // Versão mais detalhada
+      forecast.forEach((day, index) => {
+        const dayName = index === 0 ? 'Hoje' :
+          index === 1 ? 'Amanhã' :
+            new Date(day.date).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric' });
+
+        message += `📊 *${dayName}*\n`;
+        message += `🌡️ ${day.minTemp}°C - ${day.maxTemp}°C\n`;
+        message += `☀️ ${day.description}\n\n`;
+      });
+    }
+
+    message += `\n💡 *Dica:* Para informações mais detalhadas de um dia específico, pergunte "Como estará amanhã?" ou "Tempo em [data]"`;
+
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(message, phoneNumber);
+
+    // Salvar no histórico
+    await saveOrUpdateAdvancedUser(phoneNumber, {
+      last_city: city,
+      query_count: (user?.query_count || 0) + 1
+    });
+
+    return message;
+
+  } catch (error) {
+    console.error('❌ Erro na previsão de 7 dias:', error);
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      `❌ Não consegui obter a previsão de 7 dias para ${city}. Tente novamente em alguns minutos.`,
+      phoneNumber
+    );
+    return null;
+  }
+}
+
+async function handlePracticalTips(analysis, phoneNumber, user) {
+  try {
+    const { city, context, originalMessage } = analysis;
+    const targetCity = city || user?.preferred_city || user?.last_city;
+
+    if (!targetCity) {
+      await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+        "🏙️ Para dar dicas específicas, preciso saber a cidade. Qual cidade te interessa?",
+        phoneNumber
+      );
+      return null;
+    }
+
+    // Buscar dados atuais do clima
+    const weatherData = await weatherService.getCurrentWeather(targetCity, user?.units || 'celsius');
+
+    let tipMessage = `💡 *Dicas para ${targetCity}*\n\n`;
+
+    // Identificar que tipo de dica foi solicitada
+    const message = originalMessage?.toLowerCase() || '';
+
+    if (message.includes('roupa') || message.includes('vestir')) {
+      tipMessage += generateClothingTips(weatherData);
+    } else if (message.includes('calor') || message.includes('frio')) {
+      tipMessage += generateTemperatureTips(weatherData);
+    } else if (message.includes('chuva') || message.includes('guarda-chuva')) {
+      tipMessage += generateRainTips(weatherData);
+    } else if (message.includes('atividade') || message.includes('exerc')) {
+      tipMessage += generateActivityTips(weatherData);
+    } else {
+      // Dicas gerais baseadas no clima atual
+      tipMessage += generateGeneralTips(weatherData);
+    }
+
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(tipMessage, phoneNumber);
+
+    // Salvar no histórico
+    await saveOrUpdateAdvancedUser(phoneNumber, {
+      last_city: targetCity,
+      query_count: (user?.query_count || 0) + 1
+    });
+
+    return tipMessage;
+
+  } catch (error) {
+    console.error('❌ Erro ao gerar dicas práticas:', error);
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      "❌ Não consegui gerar dicas no momento. Tente novamente em alguns minutos.",
       phoneNumber
     );
     return null;
@@ -418,13 +570,38 @@ async function sendIntelligentSuggestions(phoneNumber, suggestions, city) {
           text: "Baseado na sua consulta, você pode se interessar por:"
         },
         action: {
-          buttons: suggestions.slice(0, 3).map((suggestion, index) => ({
-            type: "reply",
-            reply: {
-              id: `suggestion_${index}`,
-              title: suggestion.substring(0, 20) // Limite WhatsApp
+          buttons: suggestions.slice(0, 3).map((suggestion, index) => {
+            // Criar um mapeamento mais inteligente para botões
+            let buttonText = suggestion;
+            let buttonId = `suggestion_${index}`;
+
+            // Mapear sugestões específicas para comandos mais claros
+            if (suggestion.toLowerCase().includes('previsão') || suggestion.toLowerCase().includes('7 dias')) {
+              buttonText = "Previsão 7 dias";
+              buttonId = `forecast_7days_${city || 'current'}`;
+            } else if (suggestion.toLowerCase().includes('amanhã')) {
+              buttonText = "Tempo amanhã";
+              buttonId = `forecast_tomorrow_${city || 'current'}`;
+            } else if (suggestion.toLowerCase().includes('roupa')) {
+              buttonText = "Que roupa usar";
+              buttonId = `clothing_tips_${city || 'current'}`;
+            } else if (suggestion.toLowerCase().includes('comparar')) {
+              buttonText = "Comparar cidades";
+              buttonId = `compare_cities`;
+            } else {
+              // Limitar caracteres para outras sugestões
+              buttonText = suggestion.substring(0, 20);
+              buttonId = `suggestion_${index}`;
             }
-          }))
+
+            return {
+              type: "reply",
+              reply: {
+                id: buttonId,
+                title: buttonText
+              }
+            };
+          })
         }
       }
     };
@@ -444,15 +621,47 @@ async function processAdvancedInteractiveMessage(interactive, phoneNumber) {
 
   if (interactive.type === "button_reply") {
     const buttonId = interactive.button_reply.id;
+    const buttonTitle = interactive.button_reply.title;
 
-    if (buttonId.startsWith("suggestion_")) {
-      // Usuário clicou numa sugestão - processar como nova mensagem
-      const suggestionText = interactive.button_reply.title;
-      await processAdvancedTextMessage(suggestionText, phoneNumber);
+    console.log(`🔘 Botão pressionado: ${buttonId} - "${buttonTitle}"`);
+
+    // Processar botões específicos primeiro
+    if (buttonId.startsWith("forecast_7days_")) {
+      const city = buttonId.replace("forecast_7days_", "") === "current" ?
+        (user?.preferred_city || user?.last_city || "Maputo") :
+        buttonId.replace("forecast_7days_", "");
+      await processAdvancedTextMessage(`previsão de 7 dias ${city}`, phoneNumber);
       return;
     }
 
-    // Outros botões interativos
+    if (buttonId.startsWith("forecast_tomorrow_")) {
+      const city = buttonId.replace("forecast_tomorrow_", "") === "current" ?
+        (user?.preferred_city || user?.last_city || "Maputo") :
+        buttonId.replace("forecast_tomorrow_", "");
+      await processAdvancedTextMessage(`tempo amanhã em ${city}`, phoneNumber);
+      return;
+    }
+
+    if (buttonId.startsWith("clothing_tips_")) {
+      const city = buttonId.replace("clothing_tips_", "") === "current" ?
+        (user?.preferred_city || user?.last_city || "Maputo") :
+        buttonId.replace("clothing_tips_", "");
+      await processAdvancedTextMessage(`que roupa usar em ${city}`, phoneNumber);
+      return;
+    }
+
+    if (buttonId === "compare_cities") {
+      await processAdvancedTextMessage("comparar clima entre cidades", phoneNumber);
+      return;
+    }
+
+    if (buttonId.startsWith("suggestion_")) {
+      // Usuário clicou numa sugestão genérica - usar o título do botão
+      await processAdvancedTextMessage(buttonTitle, phoneNumber);
+      return;
+    }
+
+    // Outros botões interativos (mantidos do código original)
     switch (buttonId) {
       case "quick_weather":
         const city = user?.preferred_city || "Maputo";
@@ -523,6 +732,11 @@ function getContextualLoadingMessage(context, city) {
 
 function createSimpleWeatherMessage(weatherData) {
   const emoji = getWeatherEmoji(weatherData.description);
+
+  if (weatherData.isForecast) {
+    return `${emoji} *Previsão para amanhã em ${weatherData.city}*\n\n🌡️ ${weatherData.minTemp}${weatherData.units} - ${weatherData.maxTemp}${weatherData.units}\n📅 ${weatherData.date}\n📝 ${weatherData.description}`;
+  }
+
   return `${emoji} *${weatherData.city}*\n\n🌡️ ${weatherData.temperature}${weatherData.units} (sensação de ${weatherData.feelsLike}${weatherData.units})\n💧 Umidade: ${weatherData.humidity}%\n📝 ${weatherData.description}`;
 }
 
@@ -663,3 +877,169 @@ app.listen(port, async () => {
     console.error('❌ Erro na inicialização:', error);
   }
 });
+
+// ===============================================
+// FUNÇÕES AUXILIARES PARA DICAS PRÁTICAS
+// ===============================================
+
+function generateClothingTips(weatherData) {
+  const temp = parseInt(weatherData.temperature);
+  const isRaining = weatherData.description.toLowerCase().includes('chuva');
+
+  let tips = `👕 *Que roupa usar hoje:*\n\n`;
+
+  if (temp > 30) {
+    tips += `🌡️ Faz ${temp}°C - está quente!\n`;
+    tips += `• Roupas leves e claras\n`;
+    tips += `• Tecidos que respiram (algodão, linho)\n`;
+    tips += `• Chapéu ou boné\n`;
+    tips += `• Protetor solar\n`;
+  } else if (temp > 25) {
+    tips += `🌡️ ${temp}°C - temperatura agradável\n`;
+    tips += `• Roupas leves\n`;
+    tips += `• Camiseta e bermuda/saia\n`;
+    tips += `• Tênis confortável\n`;
+  } else if (temp > 18) {
+    tips += `🌡️ ${temp}°C - fresquinho\n`;
+    tips += `• Calça leve e blusa\n`;
+    tips += `• Casaco leve para a noite\n`;
+    tips += `• Sapato fechado\n`;
+  } else {
+    tips += `🌡️ ${temp}°C - está frio!\n`;
+    tips += `• Roupas em camadas\n`;
+    tips += `• Casaco quente\n`;
+    tips += `• Calça comprida\n`;
+    tips += `• Sapato fechado e meia\n`;
+  }
+
+  if (isRaining) {
+    tips += `\n☔ *Está chovendo:*\n`;
+    tips += `• Guarda-chuva ou capa de chuva\n`;
+    tips += `• Sapato à prova d'água\n`;
+    tips += `• Evite roupas claras\n`;
+  }
+
+  return tips;
+}
+
+function generateTemperatureTips(weatherData) {
+  const temp = parseInt(weatherData.temperature);
+  const humidity = weatherData.humidity;
+
+  let tips = '';
+
+  if (temp > 30) {
+    tips += `🔥 *Dicas para o calor (${temp}°C):*\n\n`;
+    tips += `💧 Hidrate-se constantemente\n`;
+    tips += `🏠 Fique em locais frescos nas horas mais quentes\n`;
+    tips += `⏰ Evite o sol das 10h às 16h\n`;
+    tips += `🚿 Tome banhos frescos\n`;
+    tips += `🥗 Prefira alimentos leves\n`;
+
+    if (humidity > 70) {
+      tips += `\n🌫️ Umidade alta (${humidity}%) - sensação de abafado\n`;
+      tips += `💨 Use ventilador ou ar condicionado\n`;
+    }
+  } else if (temp < 15) {
+    tips += `🧊 *Dicas para o frio (${temp}°C):*\n\n`;
+    tips += `🍵 Beba líquidos quentes\n`;
+    tips += `🏃‍♀️ Mantenha-se ativo para aquecer\n`;
+    tips += `🧦 Proteja extremidades (mãos, pés, orelhas)\n`;
+    tips += `🍲 Prefira alimentos quentes\n`;
+    tips += `🏠 Mantenha ambientes aquecidos\n`;
+  } else {
+    tips += `🌡️ *Temperatura agradável (${temp}°C):*\n\n`;
+    tips += `😊 Perfeito para atividades ao ar livre\n`;
+    tips += `🚶‍♀️ Ótimo para caminhadas\n`;
+    tips += `🌳 Aproveite parques e praças\n`;
+    tips += `📸 Dia ideal para fotos\n`;
+  }
+
+  return tips;
+}
+
+function generateRainTips(weatherData) {
+  const isRaining = weatherData.description.toLowerCase().includes('chuva');
+
+  let tips = '';
+
+  if (isRaining) {
+    tips += `☔ *Está chovendo em ${weatherData.city}:*\n\n`;
+    tips += `🌂 Leve guarda-chuva sempre\n`;
+    tips += `👟 Use sapato antiderrapante\n`;
+    tips += `🚗 Dirija com cuidado redobrado\n`;
+    tips += `🏠 Prefira atividades internas\n`;
+    tips += `📱 Tenha guarda-chuva no carro\n`;
+  } else {
+    tips += `☀️ *Sem chuva em ${weatherData.city}:*\n\n`;
+    tips += `😊 Dia livre para atividades externas\n`;
+    tips += `🧺 Bom para estender roupas\n`;
+    tips += `🚲 Perfeito para exercícios ao ar livre\n`;
+    tips += `🌳 Aproveite para ir ao parque\n`;
+  }
+
+  return tips;
+}
+
+function generateActivityTips(weatherData) {
+  const temp = parseInt(weatherData.temperature);
+  const isRaining = weatherData.description.toLowerCase().includes('chuva');
+
+  let tips = `🏃‍♀️ *Atividades recomendadas:*\n\n`;
+
+  if (isRaining) {
+    tips += `☔ *Atividades internas:*\n`;
+    tips += `🏋️‍♀️ Academia ou exercícios em casa\n`;
+    tips += `🛍️ Shopping centers\n`;
+    tips += `📚 Biblioteca ou estudo\n`;
+    tips += `🎬 Cinema\n`;
+    tips += `☕ Café com amigos\n`;
+  } else if (temp > 30) {
+    tips += `🌡️ *Calor (${temp}°C) - atividades na sombra:*\n`;
+    tips += `🏊‍♀️ Piscina ou praia\n`;
+    tips += `🌳 Parque com sombra\n`;
+    tips += `🕕 Exercícios antes das 9h ou após 17h\n`;
+    tips += `🛍️ Shopping (ar condicionado)\n`;
+    tips += `🍦 Sorveteria\n`;
+  } else if (temp < 15) {
+    tips += `🧊 *Frio (${temp}°C) - atividades aquecidas:*\n`;
+    tips += `☕ Café ou chá quente\n`;
+    tips += `🏋️‍♀️ Academia\n`;
+    tips += `🛍️ Shopping centers\n`;
+    tips += `📚 Leitura em casa\n`;
+    tips += `🎮 Jogos em casa\n`;
+  } else {
+    tips += `😊 *Clima perfeito (${temp}°C):*\n`;
+    tips += `🚶‍♀️ Caminhada ou corrida\n`;
+    tips += `🚲 Ciclismo\n`;
+    tips += `🌳 Piquenique no parque\n`;
+    tips += `⚽ Esportes ao ar livre\n`;
+    tips += `📸 Fotografia\n`;
+  }
+
+  return tips;
+}
+
+function generateGeneralTips(weatherData) {
+  const temp = parseInt(weatherData.temperature);
+  const isRaining = weatherData.description.toLowerCase().includes('chuva');
+
+  let tips = `💡 *Dicas gerais para hoje:*\n\n`;
+
+  // Dicas de vestuário
+  tips += generateClothingTips(weatherData).replace('👕 *Que roupa usar hoje:*\n\n', '👕 *Vestuário:*\n');
+
+  // Dicas de atividades
+  tips += `\n🏃‍♀️ *Atividades:*\n`;
+  if (isRaining) {
+    tips += `• Prefira atividades internas\n`;
+  } else if (temp > 25 && temp < 30) {
+    tips += `• Ótimo para atividades ao ar livre\n`;
+  } else if (temp > 30) {
+    tips += `• Evite sol forte (10h-16h)\n`;
+  } else {
+    tips += `• Vista-se adequadamente para o frio\n`;
+  }
+
+  return tips;
+}
