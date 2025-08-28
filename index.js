@@ -159,8 +159,8 @@ async function routeAdvancedRequest(analysis, originalMessage, phoneNumber, user
 
   // SEMPRE detectar bairros quando a mensagem contém "conselhos para" 
   const neighborhood = detectNeighborhood(originalMessage);
-  if (neighborhood && (originalMessage.toLowerCase().includes('conselho') || 
-                       originalMessage.toLowerCase().includes('dica'))) {
+  if (neighborhood && (originalMessage.toLowerCase().includes('conselho') ||
+    originalMessage.toLowerCase().includes('dica'))) {
     console.log(`🏘️ Detectado bairro: ${neighborhood} - Forçando rota de conselhos por bairro`);
     return await handleNeighborhoodAdvice({ ...analysis, neighborhood }, phoneNumber, user);
   }
@@ -168,9 +168,9 @@ async function routeAdvancedRequest(analysis, originalMessage, phoneNumber, user
   // Detectar se há menção de bairros da Beira para outros casos
   if (enableAutoNeighborhoodDetection && neighborhood) {
     if (originalMessage.toLowerCase().includes('chuva') ||
-        originalMessage.toLowerCase().includes('calor') ||
-        originalMessage.toLowerCase().includes('frio') ||
-        type === 'weather_data') {
+      originalMessage.toLowerCase().includes('calor') ||
+      originalMessage.toLowerCase().includes('frio') ||
+      type === 'weather_data') {
       console.log(`🏘️ Detectado bairro automaticamente: ${neighborhood}`);
       return await handleNeighborhoodAdvice({ ...analysis, neighborhood }, phoneNumber, user);
     }
@@ -212,7 +212,7 @@ async function handleSuggestionsCommand(phoneNumber, user) {
   try {
     console.log(`💡 Comando /sugestoes acionado para ${phoneNumber}`);
 
-    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Gerando sugestões inteligentes baseadas no seu perfil');
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Eh pá, deixa eu ver umas sugestões fixes para ti');
 
     // Criar contexto para as sugestões baseado no usuário
     const userContext = {
@@ -257,7 +257,7 @@ async function handleSuggestionsCommand(phoneNumber, user) {
       weatherData = {
         city: userContext.preferredCity || 'Maputo',
         temperature: 25,
-        description: 'Tempo agradável',
+        description: 'Tempo fixe',
         humidity: 60,
         units: '°C',
         isForecast: false
@@ -272,44 +272,49 @@ async function handleSuggestionsCommand(phoneNumber, user) {
     );
 
     // Criar mensagem personalizada baseada no perfil do usuário
-    let suggestionsMessage = `💡 *Sugestões Inteligentes Personalizadas*\n\n`;
+    let suggestionsMessage = `💡 *Eh pá, aqui tens umas sugestões fixes!*\n\n`;
 
-    suggestionsMessage += `👤 *Seu Perfil:*\n`;
-    suggestionsMessage += `• Nível: ${userContext.expertiseLevel.toUpperCase()}\n`;
-    suggestionsMessage += `• Consultas: ${userContext.queryCount} realizadas\n`;
+    suggestionsMessage += `👤 *Como andas por aí:*\n`;
+    const nivelMap = {
+      'basic': 'Principiante (tás a começar)',
+      'intermediate': 'Médio (já percebes bem)',
+      'advanced': 'Experiente (és um expert!)'
+    };
+    suggestionsMessage += `• Nível: ${nivelMap[userContext.expertiseLevel] || userContext.expertiseLevel}\n`;
+    suggestionsMessage += `• Já fizeste ${userContext.queryCount} perguntas\n`;
 
     if (userContext.preferredCity) {
-      suggestionsMessage += `• Cidade atual: ${userContext.preferredCity}\n`;
+      suggestionsMessage += `• Tua cidade: ${userContext.preferredCity}\n`;
       if (weatherData && !weatherData.error) {
-        suggestionsMessage += `• Temperatura: ${weatherData.temperature}${weatherData.units}\n`;
+        suggestionsMessage += `• Agora está ${weatherData.temperature}${weatherData.units}\n`;
       }
     }
 
-    suggestionsMessage += `\n🎯 *Sugestões Baseadas no Seu Uso:*\n`;
+    suggestionsMessage += `\n🎯 *Sugestões que podem te interessar:*\n`;
 
     if (suggestions && suggestions.length > 0) {
       suggestions.forEach((suggestion, index) => {
         suggestionsMessage += `${index + 1}. ${suggestion}\n`;
       });
     } else {
-      // Sugestões de fallback baseadas no nível do usuário
+      // Sugestões de fallback baseadas no nível do usuário - versão moçambicana
       if (userContext.expertiseLevel === 'basic') {
-        suggestionsMessage += `1. Clima hoje\n`;
-        suggestionsMessage += `2. Tempo amanhã\n`;
-        suggestionsMessage += `3. Que roupa usar\n`;
+        suggestionsMessage += `1. Como está o tempo hoje\n`;
+        suggestionsMessage += `2. Vai chover amanhã?\n`;
+        suggestionsMessage += `3. Que roupa devo vestir\n`;
       } else if (userContext.expertiseLevel === 'intermediate') {
-        suggestionsMessage += `1. Previsão 7 dias\n`;
-        suggestionsMessage += `2. Comparar cidades\n`;
-        suggestionsMessage += `3. Dicas atividades\n`;
+        suggestionsMessage += `1. Previsão da próxima semana\n`;
+        suggestionsMessage += `2. Comparar tempo entre cidades\n`;
+        suggestionsMessage += `3. Conselhos para atividades\n`;
       } else {
-        suggestionsMessage += `1. Análise técnica\n`;
-        suggestionsMessage += `2. Alertas avançados\n`;
-        suggestionsMessage += `3. Dados históricos\n`;
+        suggestionsMessage += `1. Análise técnica do clima\n`;
+        suggestionsMessage += `2. Alertas meteorológicos\n`;
+        suggestionsMessage += `3. Histórico do tempo\n`;
       }
     }
 
-    suggestionsMessage += `\n💬 *Como usar:* Digite qualquer uma das sugestões acima ou seus próprios comandos.\n`;
-    suggestionsMessage += `\n🔄 *Dica:* Suas sugestões se adaptam ao seu uso. Quanto mais usar, mais personalizadas ficam!`;
+    suggestionsMessage += `\n💬 *Como usar:* É só escrever qualquer uma das sugestões aí em cima, ou pergunta o que quiseres.\n`;
+    suggestionsMessage += `\n🔄 *Eh pá:* Quanto mais usares o bot, mais ele aprende contigo e as sugestões ficam melhores!`;
 
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(suggestionsMessage, phoneNumber);
 
@@ -329,7 +334,7 @@ async function handleSuggestionsCommand(phoneNumber, user) {
   } catch (error) {
     console.error('❌ Erro ao processar comando /sugestoes:', error);
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      "❌ Não consegui gerar sugestões no momento. Tente novamente em alguns segundos.\n\n💡 Você pode sempre perguntar diretamente: \"Como está o clima?\"",
+      "❌ Eh pá, não consegui gerar sugestões agora. Tenta mais tarde.\n\n💡 Podes sempre perguntar directamente: \"Como está o tempo?\"",
       phoneNumber
     );
     return null;
@@ -342,10 +347,10 @@ async function sendInteractiveSuggestionButtons(phoneNumber, suggestions, userCo
     console.log('📝 Sugestões recebidas:', suggestions);
 
     // Primeiro, enviar como mensagem de texto simples
-    const simpleMessage = `🎯 *Sugestões Personalizadas*\n\n` +
+    const simpleMessage = `🎯 *Aqui tens umas sugestões fixes!*\n\n` +
       suggestions.slice(0, 3).map((suggestion, index) => `${index + 1}. ${suggestion}`).join('\n') +
-      `\n\n💡 *Como usar:* Digite o número da sugestão ou a pergunta diretamente.\n` +
-      `📝 Exemplo: Digite "1" para a primeira sugestão.`;
+      `\n\n💡 *Como usar:* É só escrever o número ou a pergunta directamente.\n` +
+      `📝 Exemplo: Escreve "1" para a primeira sugestão, ou pergunta à vontade!`;
 
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(simpleMessage, phoneNumber);
     console.log('✅ Sugestões enviadas como texto simples');
@@ -421,7 +426,7 @@ async function handleNeighborhoodMenuCommand(phoneNumber, user) {
   try {
     console.log(`🏘️ Comando /conselhos acionado para ${phoneNumber}`);
 
-    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Preparando menu de conselhos por bairro');
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Eh pá, deixa eu preparar os conselhos para os bairros');
 
     // Buscar dados meteorológicos da Beira para contexto
     let weatherData = null;
@@ -432,24 +437,34 @@ async function handleNeighborhoodMenuCommand(phoneNumber, user) {
     }
 
     // Criar mensagem contextual baseada no clima atual
-    let conselhosMessage = `🏘️ *Conselhos por Bairro - Beira*\n\n`;
+    let conselhosMessage = `🏘️ *Eee mano, conselhos por bairro aqui na Beira!*\n\n`;
 
     if (weatherData && !weatherData.error) {
-      conselhosMessage += `🌤️ *Condições atuais em Beira:*\n`;
-      conselhosMessage += `🌡️ Temperatura: ${weatherData.temperature}°C\n`;
+      conselhosMessage += `🌤️ *Como está o tempo agora na nossa cidade:*\n`;
+      conselhosMessage += `🌡️ Temperatura: ${weatherData.temperature}°C`;
+
+      const temp = parseInt(weatherData.temperature);
+      if (temp > 30) {
+        conselhosMessage += ` (eish, está quente!)\n`;
+      } else if (temp < 18) {
+        conselhosMessage += ` (está frio hoje)\n`;
+      } else {
+        conselhosMessage += ` (está fixe)\n`;
+      }
+
       conselhosMessage += `💧 Umidade: ${weatherData.humidity}%\n`;
       conselhosMessage += `📝 ${weatherData.description}\n\n`;
     }
 
-    conselhosMessage += `💡 *Escolha um bairro para receber conselhos específicos baseados no clima atual:*\n\n`;
+    conselhosMessage += `💡 *Escolhe um bairro para receber dicas específicas conforme o tempo de hoje:*\n\n`;
 
-    conselhosMessage += `📍 *Bairros disponíveis:*\n`;
-    conselhosMessage += `• Macúti - Zona costeira e turística\n`;
-    conselhosMessage += `• Manga - Centro comercial\n`;
-    conselhosMessage += `• Goto - Zona residencial\n`;
-    conselhosMessage += `• Munhava - Bairro populoso\n`;
-    conselhosMessage += `• Chaimite - Grande bairro residencial\n`;
-    conselhosMessage += `• Ndunda - Zona em expansão\n`;
+    conselhosMessage += `📍 *Bairros que conheço bem:*\n`;
+    conselhosMessage += `• Macúti - Zona da praia e hotéis\n`;
+    conselhosMessage += `• Manga - Centro da cidade\n`;
+    conselhosMessage += `• Goto - Bairro residencial\n`;
+    conselhosMessage += `• Munhava - Bairro bem movimentado\n`;
+    conselhosMessage += `• Chaimite - Bairro grande\n`;
+    conselhosMessage += `• Ndunda - Zona nova em crescimento\n`;
     conselhosMessage += `• Cidade de Cimento - Centro histórico\n`;
     conselhosMessage += `• Palmeiras - Zona mista\n\n`;
 
@@ -490,7 +505,7 @@ async function handleNeighborhoodMenuCommand(phoneNumber, user) {
   } catch (error) {
     console.error('❌ Erro ao processar comando /conselhos:', error);
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      "❌ Não consegui carregar o menu de conselhos no momento. Tente novamente.\n\n💡 Você pode sempre perguntar diretamente: \"conselhos para [bairro]\"",
+      "❌ Não consegui carregar o menu de conselhos agora. Tenta mais tarde.\n\n💡 Podes sempre perguntar directamente: \"conselhos para [bairro]\"",
       phoneNumber
     );
     return null;
@@ -527,7 +542,7 @@ async function sendNeighborhoodSelectionButtons(phoneNumber) {
               {
                 type: "reply",
                 reply: {
-                  id: "bairro_manga", 
+                  id: "bairro_manga",
                   title: "Manga"
                 }
               },
@@ -599,15 +614,29 @@ async function sendNeighborhoodSelectionButtons(phoneNumber) {
 
 async function handleAdvancedWeatherData(analysis, phoneNumber, user) {
   try {
-    const { city, action, context, intent } = analysis;
+    const { city, action, context, intent, originalMessage } = analysis;
     let targetCity = city || user?.preferred_city;
 
     if (!targetCity) {
       await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-        "🏙️ Para consultar o clima, preciso saber a cidade. Qual cidade te interessa?",
+        "🏙️ Eh pá, para ver o tempo preciso saber a cidade. Qual cidade te interessa?",
         phoneNumber
       );
       return null;
+    }
+
+    // Verificar se é uma pergunta específica sobre chuva
+    const isRainQuery = originalMessage && (
+      originalMessage.toLowerCase().includes('vai chover') ||
+      originalMessage.toLowerCase().includes('chover') ||
+      originalMessage.toLowerCase().includes('chuva hoje') ||
+      originalMessage.toLowerCase().includes('chuva amanhã') ||
+      (originalMessage.toLowerCase().includes('chuva') &&
+        (originalMessage.toLowerCase().includes('hoje') || originalMessage.toLowerCase().includes('amanhã')))
+    );
+
+    if (isRainQuery) {
+      return await handleRainSpecificQuery(analysis, phoneNumber, user);
     }
 
     // Verificar se é uma previsão de 7 dias
@@ -688,8 +717,8 @@ async function handleAdvancedWeatherData(analysis, phoneNumber, user) {
     console.error('❌ Erro em dados meteorológicos avançados:', error);
     await whatsappApi.enviarMensagemErro(
       phoneNumber,
-      "Não consegui obter dados meteorológicos",
-      "Tente novamente ou verifique o nome da cidade"
+      "Não consegui ver os dados do tempo",
+      "Tenta mais tarde ou verifica o nome da cidade"
     );
     return null;
   }
@@ -699,7 +728,7 @@ async function handleAdvancedEducation(analysis, originalMessage, phoneNumber, u
   try {
     const { expertiseLevel, context } = analysis;
 
-    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Preparando explicação personalizada');
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Deixa eu preparar uma explicação fixe para ti');
 
     // Prompt educativo adaptado ao nível do usuário
     const educationPrompt = `
@@ -711,18 +740,25 @@ Histórico: ${user?.conversation_history?.length || 0} consultas anteriores
 Crie uma explicação meteorológica adequada para este nível:
 
 ${expertiseLevel === 'basic' ?
-        'BÁSICO: Use linguagem muito simples, analogias do cotidiano, evite termos técnicos.' :
+        'PARA BEIRENSES SIMPLES: Use palavras muito fáceis que qualquer pessoa da Beira entende. Explica como um vizinho explicaria para outro. Usa exemplos do dia a dia (como roupa a secar, cozinhar, etc). NÃO uses palavras difíceis como "sensação térmica", "umidade relativa", "precipitação". Diz "sentes como se fosse", "ar pesado", "vai chover".' :
         expertiseLevel === 'intermediate' ?
           'INTERMEDIÁRIO: Equilibre simplicidade com algum conteúdo técnico educativo.' :
           'AVANÇADO: Use terminologia meteorológica, seja preciso e detalhado.'
       }
 
-Incluir:
-1. Resposta direta à pergunta
-2. Contexto prático para Moçambique
-3. ${expertiseLevel === 'basic' ? 'Exemplo simples' : expertiseLevel === 'intermediate' ? 'Dica adicional' : 'Informação técnica relevante'}
+EXEMPLOS DE LINGUAGEM SIMPLES PARA BEIRENSES:
+- Em vez de "umidade alta" → "o ar está pesado"
+- Em vez de "precipitação" → "chuva"
+- Em vez de "sensação térmica" → "mas sentes como se fosse"
+- Em vez de "evaporação" → "a água sobe para o céu"
+- Em vez de "hidratação" → "beber muita água"
 
-Máximo ${expertiseLevel === 'basic' ? '200' : expertiseLevel === 'intermediate' ? '300' : '400'} palavras:
+Incluir:
+1. Resposta direta à pergunta (em palavras simples)
+2. Exemplo prático que acontece na Beira
+3. ${expertiseLevel === 'basic' ? 'Conselho simples para o dia a dia' : expertiseLevel === 'intermediate' ? 'Dica adicional' : 'Informação técnica relevante'}
+
+Máximo ${expertiseLevel === 'basic' ? '150' : expertiseLevel === 'intermediate' ? '300' : '400'} palavras:
     `;
 
     const educationResponse = await openaiService.callOpenAI(educationPrompt, 0.7);
@@ -736,7 +772,7 @@ Máximo ${expertiseLevel === 'basic' ? '200' : expertiseLevel === 'intermediate'
   } catch (error) {
     console.error('❌ Erro em educação avançada:', error);
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      "📚 Desculpe, não consegui preparar a explicação no momento. Tente reformular sua pergunta.",
+      "📚 Eh pá, não consegui preparar a explicação agora. Tenta reformular a tua pergunta.",
       phoneNumber
     );
     return null;
@@ -746,7 +782,7 @@ Máximo ${expertiseLevel === 'basic' ? '200' : expertiseLevel === 'intermediate'
 async function handleWeeklyForecast(city, phoneNumber, user) {
   try {
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      `📅 Buscando previsão completa de 7 dias para ${city}...`,
+      `📅 Eh pá, deixa ver como vai estar toda a semana em ${city}...`,
       phoneNumber
     );
 
@@ -798,7 +834,7 @@ async function handleWeeklyForecast(city, phoneNumber, user) {
   } catch (error) {
     console.error('❌ Erro na previsão de 7 dias:', error);
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      `❌ Não consegui obter a previsão de 7 dias para ${city}. Tente novamente em alguns minutos.`,
+      `❌ Não consegui ver a previsão de 7 dias para ${city}. Tenta mais tarde.`,
       phoneNumber
     );
     return null;
@@ -852,7 +888,7 @@ async function handlePracticalTips(analysis, phoneNumber, user) {
   } catch (error) {
     console.error('❌ Erro ao gerar dicas práticas:', error);
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      "❌ Não consegui gerar dicas no momento. Tente novamente em alguns minutos.",
+      "❌ Não consegui gerar dicas agora. Tenta mais tarde.",
       phoneNumber
     );
     return null;
@@ -869,13 +905,13 @@ async function handleCityComparison(analysis, phoneNumber, user) {
     if (cities.length < 2) {
       const suggestedCity = user?.last_city || 'Beira';
       await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-        `🔄 Para comparar, preciso de duas cidades.\n\nVocê mencionou: ${city || 'nenhuma'}\n\nQuer comparar com ${suggestedCity}? Ou me diga outra cidade.`,
+        `🔄 Para comparar, preciso de duas cidades.\n\nTu mencionaste: ${city || 'nenhuma'}\n\nQueres comparar com ${suggestedCity}? Ou me diz outra cidade.`,
         phoneNumber
       );
       return null;
     }
 
-    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Comparando clima das cidades');
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Vou comparar o tempo nessas cidades');
 
     // Buscar dados das duas cidades
     const [weather1, weather2] = await Promise.all([
@@ -936,7 +972,7 @@ async function handleNeighborhoodAdvice(analysis, phoneNumber, user) {
 
     if (!neighborhood) {
       await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-        "🏘️ Para dar conselhos específicos, preciso saber o bairro da Beira.\n\n📍 *Bairros disponíveis:*\n• Macúti, Manga, Goto, Munhava\n• Chaimite, Ndunda, Palmeiras\n• Cidade de Cimento, Ponta-Gêa\n\n💬 Exemplo: \"conselhos para Macúti se chover\"\n\n🔧 Ou use o comando \`/conselhos\` para ver o menu interativo!",
+        "🏘️ Eish meu caro, preciso de saber qual bairro da nossa Beira estás!\n\n📍 *Bairros que conheço bem:*\n• Macúti, Manga, Goto, Munhava\n• Chaimite, Ndunda, Palmeiras\n• Cidade de Cimento, Ponta-Gêa\n\n💬 Podes dizer assim: \"conselhos para Macúti se chover\"\n\n🔧 Ou usa `/conselhos` para ver as opções todas!",
         phoneNumber
       );
       return null;
@@ -945,7 +981,7 @@ async function handleNeighborhoodAdvice(analysis, phoneNumber, user) {
     // Buscar dados meteorológicos da Beira
     const weatherData = await weatherService.getCurrentWeather('Beira', user?.units || 'celsius');
 
-    await whatsappApi.enviarMensagemCarregamento(phoneNumber, `Analisando condições para o bairro ${neighborhood}`);
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, `Deixa ver as condições aí no ${neighborhood}...`);
 
     // Gerar conselhos específicos
     const advice = await generateNeighborhoodAdvice(neighborhood, weatherData, context, originalMessage || '');
@@ -964,7 +1000,7 @@ async function handleNeighborhoodAdvice(analysis, phoneNumber, user) {
   } catch (error) {
     console.error('❌ Erro ao gerar conselhos de bairro:', error);
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      "❌ Não consegui gerar conselhos para o bairro no momento. Tente novamente.",
+      "❌ Não consegui gerar conselhos para o bairro agora. Tenta de novo.",
       phoneNumber
     );
     return null;
@@ -1006,13 +1042,30 @@ async function generateNeighborhoodAdvice(neighborhood, weatherData, context, or
   const humidity = weatherData.humidity;
   const feelsLike = weatherData.feelsLike ? parseInt(weatherData.feelsLike) : temp;
 
-  let advice = `🏘️ *Conselhos para ${neighborhood.toUpperCase()}*\n`;
-  advice += `📍 Cidade da Beira, Moçambique\n\n`;
-  
-  // Informações climáticas atuais
-  advice += `🌤️ *CONDIÇÕES ATUAIS:*\n`;
-  advice += `🌡️ Temperatura: ${temp}°C (sensação ${feelsLike}°C)\n`;
-  advice += `💧 Umidade: ${humidity}%\n`;
+  let advice = `🏘️ *Eee mano, conselhos para ${neighborhood.toUpperCase()}!*\n`;
+  advice += `📍 Aqui na nossa Beira querida 🇲🇿\n\n`;
+
+  // Informações climáticas atuais com linguagem local
+  advice += `🌤️ *COMO ESTÁ O TEMPO AGORA:*\n`;
+  advice += `🌡️ Temperatura: ${temp}°C`;
+
+  if (temp > 30) {
+    advice += ` (eish, está quente mesmo!)\n`;
+  } else if (temp < 18) {
+    advice += ` (está um frio, né!)\n`;
+  } else {
+    advice += ` (está fixe assim)\n`;
+  }
+
+  advice += `💧 Umidade: ${humidity}% `;
+  if (humidity > 80) {
+    advice += `(está bem abafado hoje)\n`;
+  } else if (humidity < 50) {
+    advice += `(ar está seco)\n`;
+  } else {
+    advice += `(normal)\n`;
+  }
+
   advice += `📝 Tempo: ${weatherData.description}\n\n`;
 
   // Características específicas do bairro
@@ -1021,7 +1074,7 @@ async function generateNeighborhoodAdvice(neighborhood, weatherData, context, or
   // Riscos específicos por bairro
   const risks = getNeighborhoodRisks(neighborhood, weatherData);
   if (risks.length > 0) {
-    advice += `⚠️ *ALERTAS ESPECÍFICOS:*\n`;
+    advice += `⚠️ *ATENÇÃO ESPECIAL:*\n`;
     risks.forEach(risk => advice += `• ${risk}\n`);
     advice += `\n`;
   }
@@ -1051,124 +1104,124 @@ async function generateNeighborhoodAdvice(neighborhood, weatherData, context, or
 }
 
 function getNeighborhoodCharacteristics(neighborhood) {
-  let characteristics = `📍 *CARACTERÍSTICAS DO BAIRRO:*\n`;
-  
+  let characteristics = `📍 *COMO É AÍ NO BAIRRO:*\n`;
+
   switch (neighborhood.toLowerCase()) {
     case 'munhava':
-      characteristics += `• Bairro populoso e residencial\n`;
-      characteristics += `• Grande densidade populacional\n`;
-      characteristics += `• Várias escolas e mercados locais\n`;
-      characteristics += `• Sistema de drenagem em desenvolvimento\n\n`;
+      characteristics += `• Bairro bem movimentado, com muita gente\n`;
+      characteristics += `• Tem bastante escola e mercado por aqui\n`;
+      characteristics += `• Às vezes quando chove muito pode alagar\n`;
+      characteristics += `• Pessoal é bem receptivo e conhece toda gente\n\n`;
       break;
-      
+
     case 'macúti':
-      characteristics += `• Bairro costeiro e turístico\n`;
-      characteristics += `• Próximo à praia e restaurantes\n`;
-      characteristics += `• Influência direta da brisa marítima\n`;
-      characteristics += `• Zona de hotéis e pousadas\n\n`;
+      characteristics += `• Aqui é zona de praia, muito fixe!\n`;
+      characteristics += `• Tem restaurantes bons e hotéis\n`;
+      characteristics += `• Vento do mar sempre a refrescar\n`;
+      characteristics += `• Turistas adoram vir aqui no fim de semana\n\n`;
       break;
-      
+
     case 'manga':
-      characteristics += `• Centro comercial da cidade\n`;
-      characteristics += `• Alta concentração de lojas e serviços\n`;
-      characteristics += `• Trânsito intenso durante o dia\n`;
-      characteristics += `• Boa infraestrutura urbana\n\n`;
+      characteristics += `• Centro da cidade, sempre cheio de movimento\n`;
+      characteristics += `• Aqui tens tudo: lojas, bancos, serviços\n`;
+      characteristics += `• Trânsito às vezes complica durante o dia\n`;
+      characteristics += `• Lugar ideal para resolver assuntos\n\n`;
       break;
-      
+
     case 'goto':
-      characteristics += `• Bairro residencial em crescimento\n`;
-      characteristics += `• Mistura de casas tradicionais e modernas\n`;
-      characteristics += `• Algumas áreas com drenagem limitada\n`;
-      characteristics += `• Comunidade bem estabelecida\n\n`;
+      characteristics += `• Bairro residencial bem tranquilo\n`;
+      characteristics += `• Mistura de casas antigas e novas\n`;
+      characteristics += `• Algumas zonas quando chove ficam complicadas\n`;
+      characteristics += `• Comunidade unida, toda gente se conhece\n\n`;
       break;
-      
+
     case 'chaimite':
-      characteristics += `• Um dos maiores bairros da Beira\n`;
-      characteristics += `• Principalmente residencial\n`;
-      characteristics += `• Várias estradas de terra\n`;
-      characteristics += `• Centro de atividades comunitárias\n\n`;
+      characteristics += `• Um dos bairros maiores da Beira\n`;
+      characteristics += `• Maioria das pessoas mora aqui\n`;
+      characteristics += `• Algumas estradas ainda são de terra batida\n`;
+      characteristics += `• Tem muito movimento comunitário\n\n`;
       break;
-      
+
     case 'ndunda':
-      characteristics += `• Bairro em rápida expansão\n`;
-      characteristics += `• Muitas construções novas\n`;
-      characteristics += `• Infraestrutura em desenvolvimento\n`;
-      characteristics += `• Jovem população urbana\n\n`;
+      characteristics += `• Bairro que está crescer muito rápido\n`;
+      characteristics += `• Sempre construções novas por todo lado\n`;
+      characteristics += `• Infraestrutura ainda está a melhorar\n`;
+      characteristics += `• Muitos jovens moram aqui\n\n`;
       break;
-      
+
     default:
-      characteristics += `• Bairro residencial da Beira\n`;
-      characteristics += `• Características típicas da cidade\n`;
-      characteristics += `• Comunidade local ativa\n\n`;
+      characteristics += `• Bairro residencial típico da nossa Beira\n`;
+      characteristics += `• Comunidade bem activa\n`;
+      characteristics += `• Pessoal sempre pronto para ajudar\n\n`;
   }
-  
+
   return characteristics;
 }
 
 function generateNeighborhoodClothingAdvice(neighborhood, weatherData) {
   const temp = parseInt(weatherData.temperature);
   const isRaining = weatherData.description.toLowerCase().includes('chuva');
-  
-  let advice = `👕 *VESTUÁRIO RECOMENDADO:*\n`;
-  
+
+  let advice = `👕 *QUE ROUPA VESTIR HOJE:*\n`;
+
   // Conselhos baseados na temperatura
   if (temp > 30) {
-    advice += `🌡️ Calor (${temp}°C):\n`;
-    advice += `• Roupas leves e claras\n`;
-    advice += `• Tecidos que respiram (algodão)\n`;
-    advice += `• Chapéu ou boné\n`;
-    advice += `• Protetor solar\n`;
+    advice += `🌡️ Está quente (${temp}°C):\n`;
+    advice += `• Vista roupa leve e clara\n`;
+    advice += `• Algodão é melhor (respira bem)\n`;
+    advice += `• Não esqueças chapéu ou boné\n`;
+    advice += `• Põe protetor solar\n`;
   } else if (temp < 20) {
-    advice += `🧊 Fresco (${temp}°C):\n`;
-    advice += `• Roupas em camadas\n`;
-    advice += `• Casaco leve ou sweatshirt\n`;
-    advice += `• Calça comprida\n`;
-    advice += `• Sapato fechado\n`;
+    advice += `🧊 Está fresquinho (${temp}°C):\n`;
+    advice += `• Vista roupa por camadas\n`;
+    advice += `• Leva casaco leve ou sweatshirt\n`;
+    advice += `• Calça comprida é melhor\n`;
+    advice += `• Sapato fechado para os pés\n`;
   } else {
-    advice += `😊 Agradável (${temp}°C):\n`;
-    advice += `• Roupa confortável\n`;
+    advice += `😊 Temperatura boa (${temp}°C):\n`;
+    advice += `• Roupa confortável está bem\n`;
     advice += `• Camiseta e calça leve\n`;
-    advice += `• Casaco leve para a noite\n`;
+    advice += `• Leva casaco para a noite\n`;
   }
-  
+
   // Conselhos específicos por bairro
   switch (neighborhood.toLowerCase()) {
     case 'macúti':
       if (!isRaining) {
-        advice += `🏖️ Específico para Macúti:\n`;
-        advice += `• Roupa de banho se for à praia\n`;
-        advice += `• Chinelos para a areia\n`;
-        advice += `• Óculos de sol (reflexo do mar)\n`;
+        advice += `🏖️ Para Macúti (zona da praia):\n`;
+        advice += `• Se fores à praia, leva fato de banho\n`;
+        advice += `• Chinelos para andar na areia\n`;
+        advice += `• Óculos de sol (sol reflete no mar)\n`;
       }
       break;
-      
+
     case 'manga':
-      advice += `🏪 Específico para Manga:\n`;
-      advice += `• Roupa adequada para compras\n`;
-      advice += `• Sapato confortável para caminhar\n`;
-      advice += `• Bolsa segura para valores\n`;
+      advice += `🏪 Para Manga (centro):\n`;
+      advice += `• Roupa boa para fazer compras\n`;
+      advice += `• Sapato confortável para andar muito\n`;
+      advice += `• Bolsa bem fechada para coisas importantes\n`;
       break;
-      
+
     case 'munhava':
     case 'goto':
     case 'chaimite':
     case 'ndunda':
-      advice += `🏘️ Específico para bairro residencial:\n`;
-      advice += `• Sapato adequado para ruas locais\n`;
+      advice += `🏘️ Para bairro residencial:\n`;
+      advice += `• Sapato bom para ruas do bairro\n`;
       advice += `• Roupa prática para o dia a dia\n`;
       if (isRaining) {
-        advice += `• Sapato fechado (evitar chinelos)\n`;
+        advice += `• Sapato fechado (não chinelos na chuva)\n`;
       }
       break;
   }
-  
+
   if (isRaining) {
-    advice += `☔ Para chuva:\n`;
-    advice += `• Guarda-chuva ou capa de chuva\n`;
-    advice += `• Sapato impermeável\n`;
-    advice += `• Evite roupas claras\n`;
+    advice += `☔ Se está chuva:\n`;
+    advice += `• Leva guarda-chuva ou capulana\n`;
+    advice += `• Sapato que não escorrega\n`;
+    advice += `• Evita roupa clara (suja fácil)\n`;
   }
-  
+
   advice += `\n`;
   return advice;
 }
@@ -1176,70 +1229,70 @@ function generateNeighborhoodClothingAdvice(neighborhood, weatherData) {
 function generateTransportAdvice(neighborhood, weatherData) {
   const isRaining = weatherData.description.toLowerCase().includes('chuva');
   const temp = parseInt(weatherData.temperature);
-  
-  let advice = `🚗 *TRANSPORTE E LOCOMOÇÃO:*\n`;
-  
+
+  let advice = `🚗 *COMO ANDAR E TRANSPORTES:*\n`;
+
   switch (neighborhood.toLowerCase()) {
     case 'macúti':
-      advice += `🏖️ Em Macúti:\n`;
+      advice += `🏖️ Aí no Macúti:\n`;
       if (isRaining) {
-        advice += `• Evite caminhar na praia (ondas agitadas)\n`;
-        advice += `• Use transporte coberto\n`;
-        advice += `• Cuidado com pisos molhados em restaurantes\n`;
+        advice += `• Não andes perto da praia (ondas bravias)\n`;
+        advice += `• Usa chapa ou taxi coberto\n`;
+        advice += `• Cuidado com chão molhado nos restaurantes\n`;
       } else if (temp > 32) {
-        advice += `• Caminhe na sombra sempre que possível\n`;
-        advice += `• Evite asfalto quente\n`;
-        advice += `• Use transporte com ar condicionado\n`;
+        advice += `• Anda sempre na sombra\n`;
+        advice += `• Asfalto está muito quente\n`;
+        advice += `• Procura transporte com ar condicionado\n`;
       } else {
-        advice += `• Ótimo para caminhadas na orla\n`;
-        advice += `• Aproveite a brisa marítima\n`;
-        advice += `• Bicicleta é uma boa opção\n`;
+        advice += `• Fixe para andar na beira-mar\n`;
+        advice += `• Aproveita a brisa do mar\n`;
+        advice += `• Bicicleta é boa opção\n`;
       }
       break;
-      
+
     case 'manga':
       advice += `🏪 No centro (Manga):\n`;
       if (isRaining) {
-        advice += `• Trânsito mais lento - saia mais cedo\n`;
-        advice += `• Use coberturas dos edifícios\n`;
-        advice += `• Atenção com poças nas ruas principais\n`;
+        advice += `• Trânsito fica devagar - sai mais cedo\n`;
+        advice += `• Usa cobertura dos prédios para andar\n`;
+        advice += `• Cuidado com poças nas ruas principais\n`;
       } else {
         advice += `• Trânsito normal durante o dia\n`;
-        advice += `• Estacionamento limitado - chegue cedo\n`;
-        advice += `• Boa conectividade de transportes públicos\n`;
+        advice += `• Lugar para estacionar é pouco - chega cedo\n`;
+        advice += `• Chapas passam bem aqui\n`;
       }
       break;
-      
+
     case 'munhava':
-      advice += `🏘️ Em Munhava:\n`;
+      advice += `🏘️ Aí no Munhava:\n`;
       if (isRaining) {
-        advice += `• Algumas vias podem alagar\n`;
-        advice += `• Evite áreas baixas do bairro\n`;
-        advice += `• Transporte público pode atrasar\n`;
-        advice += `• Caminhe com cuidado em ruas não pavimentadas\n`;
+        advice += `• Algumas ruas podem encher de água\n`;
+        advice += `• Evita zonas baixas do bairro\n`;
+        advice += `• Chapas podem atrasar\n`;
+        advice += `• Caminha devagar nas ruas de terra\n`;
       } else {
-        advice += `• Transporte público funciona normalmente\n`;
-        advice += `• Boa para caminhadas no bairro\n`;
-        advice += `• Chapas (transporte local) disponíveis\n`;
+        advice += `• Chapas passam normal\n`;
+        advice += `• Bom para andar a pé no bairro\n`;
+        advice += `• Transporte local sempre tem\n`;
       }
       break;
-      
+
     case 'goto':
     case 'chaimite':
     case 'ndunda':
-      advice += `🏘️ Em bairro residencial:\n`;
+      advice += `🏘️ No bairro residencial:\n`;
       if (isRaining) {
-        advice += `• Estradas de terra podem ficar escorregadias\n`;
-        advice += `• Evite zonas de acumulação de água\n`;
-        advice += `• Prefira chapas ou transporte coberto\n`;
+        advice += `• Estradas de terra ficam escorregadias\n`;
+        advice += `• Evita zonas onde água acumula\n`;
+        advice += `• Melhor usar chapa ou taxi\n`;
       } else {
-        advice += `• Boa acessibilidade no bairro\n`;
-        advice += `• Transporte local (chapas) disponível\n`;
-        advice += `• Adequado para bicicletas\n`;
+        advice += `• Fácil de andar por aqui\n`;
+        advice += `• Chapas locais sempre tem\n`;
+        advice += `• Bom para andar de bicicleta\n`;
       }
       break;
   }
-  
+
   advice += `\n`;
   return advice;
 }
@@ -1474,7 +1527,7 @@ Vou te avisar sobre mudanças climáticas em ${targetCity}.
 
 Para ajustar configurações, digite "configurar alertas".
 
-*Nota:* Este é um recurso premium. Em breve você receberá notificações inteligentes!`;
+*Nota:* Este é um recurso premium. Em breve vais receber notificações inteligentes!`;
 
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(reminderMessage, phoneNumber);
 
@@ -1490,24 +1543,24 @@ Para ajustar configurações, digite "configurar alertas".
 }
 
 async function handleOffTopicAdvanced(analysis, phoneNumber, user) {
-  const offTopicMessage = `🤖 Sou especializado em clima e meteorologia! 
+  const offTopicMessage = `🤖 Eh pá, sou especialista em tempo e meteorologia! 
 
-🌤️ *Posso ajudar com:*
-• Temperatura atual de qualquer cidade
+🌤️ *Posso ajudar-te com:*
+• Temperatura actual de qualquer cidade
 • Previsões meteorológicas
-• Explicações sobre fenômenos climáticos
+• Explicações sobre fenómenos climáticos
 • Comparações entre cidades
 • Alertas climáticos personalizados
 • Conselhos específicos para bairros da Beira
 
 ⭐ *COMANDOS ESPECIAIS:*
-• \`/sugestoes\` - Dicas personalizadas baseadas no seu perfil
+• \`/sugestoes\` - Dicas fixes baseadas no teu perfil
 • \`/conselhos\` - Menu interativo de conselhos por bairro da Beira
 
-🏘️ *Conselhos por bairro da Beira disponíveis!*
-📍 Exemplo: "Conselhos para Macúti se chover" ou use \`/conselhos\`
+🏘️ *Conselhos para bairros da Beira disponíveis!*
+📍 Exemplo: "Conselhos para Macúti se chover" ou usa \`/conselhos\`
 
-💬 Tente perguntar: "Como está o clima em Maputo?" ou \`/sugestoes\``;
+💬 Pergunta algo tipo: "Como está o tempo em Maputo?" ou \`/sugestoes\``;
 
   await whatsappApi.enviarMensagemUsandoWhatsappAPI(offTopicMessage, phoneNumber);
   return offTopicMessage;
@@ -1530,10 +1583,10 @@ async function sendIntelligentSuggestions(phoneNumber, suggestions, city) {
         type: "button",
         header: {
           type: "text",
-          text: "💡 Sugestões Inteligentes"
+          text: "💡 Umas sugestões fixes"
         },
         body: {
-          text: "Baseado na sua consulta, você pode se interessar por:"
+          text: "Eh pá, com base no que perguntaste, talvez te interesse:"
         },
         action: {
           buttons: suggestions.slice(0, 3).map((suggestion, index) => {
@@ -1544,16 +1597,16 @@ async function sendIntelligentSuggestions(phoneNumber, suggestions, city) {
             // Mapear sugestões específicas para comandos mais claros
             if (suggestion.toLowerCase().includes('previsão') || suggestion.toLowerCase().includes('7 dias')) {
               buttonText = "Previsão 7 dias";
-              buttonId = `forecast_7days_${city || 'current'}`;
+              buttonId = `forecast_7days_${city || 'current'}_${index}`;
             } else if (suggestion.toLowerCase().includes('amanhã')) {
               buttonText = "Tempo amanhã";
-              buttonId = `forecast_tomorrow_${city || 'current'}`;
+              buttonId = `forecast_tomorrow_${city || 'current'}_${index}`;
             } else if (suggestion.toLowerCase().includes('roupa')) {
               buttonText = "Que roupa usar";
-              buttonId = `clothing_tips_${city || 'current'}`;
+              buttonId = `clothing_tips_${city || 'current'}_${index}`;
             } else if (suggestion.toLowerCase().includes('comparar')) {
               buttonText = "Comparar cidades";
-              buttonId = `compare_cities`;
+              buttonId = `compare_cities_${index}`;
             } else {
               // Limitar caracteres para outras sugestões
               buttonText = suggestion.substring(0, 20);
@@ -1593,30 +1646,33 @@ async function processAdvancedInteractiveMessage(interactive, phoneNumber) {
 
     // Processar botões específicos primeiro
     if (buttonId.startsWith("forecast_7days_")) {
-      const city = buttonId.replace("forecast_7days_", "") === "current" ?
+      const cityPart = buttonId.replace("forecast_7days_", "").split('_')[0];
+      const city = cityPart === "current" ?
         (user?.preferred_city || user?.last_city || "Maputo") :
-        buttonId.replace("forecast_7days_", "");
+        cityPart;
       await processAdvancedTextMessage(`previsão de 7 dias ${city}`, phoneNumber);
       return;
     }
 
     if (buttonId.startsWith("forecast_tomorrow_")) {
-      const city = buttonId.replace("forecast_tomorrow_", "") === "current" ?
+      const cityPart = buttonId.replace("forecast_tomorrow_", "").split('_')[0];
+      const city = cityPart === "current" ?
         (user?.preferred_city || user?.last_city || "Maputo") :
-        buttonId.replace("forecast_tomorrow_", "");
+        cityPart;
       await processAdvancedTextMessage(`tempo amanhã em ${city}`, phoneNumber);
       return;
     }
 
     if (buttonId.startsWith("clothing_tips_")) {
-      const city = buttonId.replace("clothing_tips_", "") === "current" ?
+      const cityPart = buttonId.replace("clothing_tips_", "").split('_')[0];
+      const city = cityPart === "current" ?
         (user?.preferred_city || user?.last_city || "Maputo") :
-        buttonId.replace("clothing_tips_", "");
+        cityPart;
       await processAdvancedTextMessage(`que roupa usar em ${city}`, phoneNumber);
       return;
     }
 
-    if (buttonId === "compare_cities") {
+    if (buttonId.startsWith("compare_cities")) {
       await processAdvancedTextMessage("comparar clima entre cidades", phoneNumber);
       return;
     }
@@ -1625,7 +1681,7 @@ async function processAdvancedInteractiveMessage(interactive, phoneNumber) {
     if (buttonId.startsWith("bairro_")) {
       const bairroMap = {
         "bairro_macuti": "Macúti",
-        "bairro_manga": "Manga", 
+        "bairro_manga": "Manga",
         "bairro_goto": "Goto",
         "bairro_munhava": "Munhava",
         "bairro_chaimite": "Chaimite",
@@ -1633,7 +1689,7 @@ async function processAdvancedInteractiveMessage(interactive, phoneNumber) {
         "bairro_palmeiras": "Palmeiras",
         "bairro_cidade_cimento": "Cidade de Cimento"
       };
-      
+
       const bairro = bairroMap[buttonId] || buttonTitle;
       await processAdvancedTextMessage(`conselhos para ${bairro}`, phoneNumber, false); // false = não detectar automaticamente
       return;
@@ -1724,7 +1780,7 @@ async function processLocationMessage(location, phoneNumber) {
   try {
     const { latitude, longitude } = location;
 
-    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Identificando localização');
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Deixa ver onde tu estás');
 
     // Aqui você poderia usar uma API de geocoding reverso
     // Por exemplo, OpenWeatherMap, Google Maps, etc.
@@ -1753,11 +1809,11 @@ Exemplo: "clima aqui" ou "temperatura atual"`;
 function getContextualLoadingMessage(context, city) {
   const { timeframe, weatherAspect } = context || {};
 
-  if (timeframe === 'amanha') return `🔍 Verificando previsão para amanhã em ${city}...`;
-  if (weatherAspect === 'chuva') return `☔ Analisando possibilidade de chuva em ${city}...`;
-  if (weatherAspect === 'temperatura') return `🌡️ Consultando temperatura atual em ${city}...`;
+  if (timeframe === 'amanha') return `🔍 Deixa ver como vai estar amanhã em ${city}...`;
+  if (weatherAspect === 'chuva') return `☔ Eh pá, vou ver se vai chover em ${city}...`;
+  if (weatherAspect === 'temperatura') return `🌡️ Vou verificar a temperatura actual em ${city}...`;
 
-  return `🔍 Buscando informações meteorológicas de ${city}...`;
+  return `🔍 Deixa eu ver como está o tempo em ${city}...`;
 }
 
 function createSimpleWeatherMessage(weatherData) {
@@ -1802,7 +1858,7 @@ async function processBasicFallback(messageText, phoneNumber) {
   console.log('🔄 Usando fallback básico para:', messageText);
 
   await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-    "🤖 Desculpe, não consegui entender completamente sua mensagem.\n\n💬 Você pode tentar:\n• 'Clima em [cidade]'\n• 'Previsão para amanhã'\n• 'O que é [termo meteorológico]?'\n\nComo posso ajudar?",
+    "🤖 Eh pá, não consegui entender bem a tua mensagem.\n\n💬 Podes tentar assim:\n• 'Clima em [cidade]'\n• 'Previsão para amanhã'\n• 'O que é [termo meteorológico]?'\n\nComo é que te posso ajudar?",
     phoneNumber
   );
 }
@@ -1811,24 +1867,30 @@ async function sendAdvancedHelp(phoneNumber, user) {
   const language = user?.language || 'pt';
   const expertiseLevel = user?.expertise_level || 'basic';
 
-  let helpMessage = `🤖 *Assistente Meteorológico Avançado*\n\n`;
+  let helpMessage = `🤖 *Eh pá, sou o teu assistente do tempo!*\n\n`;
 
   helpMessage += `⭐ *COMANDOS ESPECIAIS:*\n`;
-  helpMessage += `• \`/sugestoes\` - Sugestões inteligentes personalizadas\n`;
-  helpMessage += `• \`/conselhos\` - Menu de conselhos por bairro da Beira\n\n`;
+  helpMessage += `• \`/sugestoes\` - Vou dar-te umas sugestões fixes\n`;
+  helpMessage += `• \`/conselhos\` - Conselhos para os bairros da Beira\n\n`;
+
+  const nivelMap = {
+    'basic': 'Principiante (tás a começar)',
+    'intermediate': 'Médio (já percebes bem)',
+    'advanced': 'Experiente (és um expert!)'
+  };
 
   if (expertiseLevel === 'basic') {
-    helpMessage += `💬 *Comandos Simples:*\n• "Clima em [cidade]"\n• "Vai chover amanhã?"\n• "O que é umidade?"\n• "Conselhos para Macúti se chover"\n\n`;
+    helpMessage += `💬 *Para começares:*\n• "Como está o tempo em [cidade]"\n• "Vai chover amanhã?"\n• "O que é umidade?"\n• "Conselhos para Macúti se chover"\n\n`;
   } else if (expertiseLevel === 'intermediate') {
-    helpMessage += `💬 *Comandos Disponíveis:*\n• Consultas: "Temperatura Maputo"\n• Comparações: "Compare Maputo e Beira"\n• Educação: "Como se forma a chuva?"\n• Previsões: "Resumo da semana"\n• Bairros: "Dicas para Manga com calor"\n\n`;
+    helpMessage += `💬 *Podes perguntar:*\n• Consultas: "Temperatura em Maputo"\n• Comparações: "Compara Maputo com Beira"\n• Educação: "Como se forma a chuva?"\n• Previsões: "Como vai estar a semana"\n• Bairros: "Dicas para Manga com calor"\n\n`;
   } else {
-    helpMessage += `💬 *Comandos Avançados:*\n• Análises técnicas meteorológicas\n• Comparações multi-cidade\n• Alertas personalizados\n• Dados históricos e tendências\n• Conselhos específicos por bairro da Beira\n\n`;
+    helpMessage += `💬 *Para experts como tu:*\n• Análises técnicas meteorológicas\n• Comparações entre várias cidades\n• Alertas personalizados\n• Dados históricos e tendências\n• Conselhos específicos por bairro da Beira\n\n`;
   }
 
-  helpMessage += `🏘️ *Conselhos por Bairro da Beira:*\n`;
-  helpMessage += `📍 *Bairros suportados:* Macúti, Manga, Goto, Munhava, Chaimite, Ndunda, Cidade de Cimento, Palmeiras\n`;
-  helpMessage += `💡 *Como usar:* Digite \`/conselhos\` para menu interativo ou "conselhos para [bairro]"\n\n`;
-  helpMessage += `🎯 *Seu Nível:* ${expertiseLevel.toUpperCase()}\n📊 *Consultas:* ${user?.query_count || 0}\n\nComo posso ajudar hoje?`;
+  helpMessage += `🏘️ *Conselhos para Bairros da Beira:*\n`;
+  helpMessage += `📍 *Conheço estes bairros:* Macúti, Manga, Goto, Munhava, Chaimite, Ndunda, Cidade de Cimento, Palmeiras\n`;
+  helpMessage += `💡 *Como usar:* Escreve \`/conselhos\` ou pergunta directamente "conselhos para [bairro]"\n\n`;
+  helpMessage += `🎯 *Teu nível:* ${nivelMap[expertiseLevel] || expertiseLevel}\n📊 *Perguntas feitas:* ${user?.query_count || 0}\n\nEntão, em que posso ajudar-te hoje?`;
 
   await whatsappApi.enviarMensagemUsandoWhatsappAPI(helpMessage, phoneNumber);
 }
@@ -1923,27 +1985,27 @@ function generateClothingTips(weatherData) {
   const temp = parseInt(weatherData.temperature);
   const isRaining = weatherData.description.toLowerCase().includes('chuva');
 
-  let tips = `👕 *Que roupa usar hoje:*\n\n`;
+  let tips = `👕 *Como te vestir hoje:*\n\n`;
 
   if (temp > 30) {
-    tips += `🌡️ Faz ${temp}°C - está quente!\n`;
-    tips += `• Roupas leves e claras\n`;
-    tips += `• Tecidos que respiram (algodão, linho)\n`;
-    tips += `• Chapéu ou boné\n`;
-    tips += `• Protetor solar\n`;
+    tips += `🌡️ Faz ${temp}°C - eh pá, está quente mesmo!\n`;
+    tips += `• Roupa leve e clara\n`;
+    tips += `• Tecidos frescos (algodão é fixe)\n`;
+    tips += `• Chapéu ou boné para proteger\n`;
+    tips += `• Não te esqueças do protetor solar\n`;
   } else if (temp > 25) {
-    tips += `🌡️ ${temp}°C - temperatura agradável\n`;
-    tips += `• Roupas leves\n`;
-    tips += `• Camiseta e bermuda/saia\n`;
-    tips += `• Tênis confortável\n`;
+    tips += `🌡️ ${temp}°C - temperatura bacana\n`;
+    tips += `• Roupa leve está bem\n`;
+    tips += `• Camiseta e shorts/saia\n`;
+    tips += `• Sapato confortável\n`;
   } else if (temp > 18) {
-    tips += `🌡️ ${temp}°C - fresquinho\n`;
+    tips += `🌡️ ${temp}°C - está fresquinho\n`;
     tips += `• Calça leve e blusa\n`;
-    tips += `• Casaco leve para a noite\n`;
+    tips += `• Leva casaquinho para mais tarde\n`;
     tips += `• Sapato fechado\n`;
   } else {
-    tips += `🌡️ ${temp}°C - está frio!\n`;
-    tips += `• Roupas em camadas\n`;
+    tips += `🌡️ ${temp}°C - eish, está frio!\n`;
+    tips += `• Vista roupa por camadas\n`;
     tips += `• Casaco quente\n`;
     tips += `• Calça comprida\n`;
     tips += `• Sapato fechado e meia\n`;
@@ -1967,29 +2029,29 @@ function generateTemperatureTips(weatherData) {
 
   if (temp > 30) {
     tips += `🔥 *Dicas para o calor (${temp}°C):*\n\n`;
-    tips += `💧 Hidrate-se constantemente\n`;
-    tips += `🏠 Fique em locais frescos nas horas mais quentes\n`;
-    tips += `⏰ Evite o sol das 10h às 16h\n`;
-    tips += `🚿 Tome banhos frescos\n`;
-    tips += `🥗 Prefira alimentos leves\n`;
+    tips += `💧 Bebe muita água mesmo\n`;
+    tips += `🏠 Fica em locais frescos nas horas quentes\n`;
+    tips += `⏰ Evita o sol das 10h às 16h\n`;
+    tips += `🚿 Toma banhos frescos\n`;
+    tips += `🥗 Come coisas leves\n`;
 
     if (humidity > 70) {
-      tips += `\n🌫️ Umidade alta (${humidity}%) - sensação de abafado\n`;
-      tips += `💨 Use ventilador ou ar condicionado\n`;
+      tips += `\n🌫️ Umidade alta (${humidity}%) - está bem abafado\n`;
+      tips += `💨 Usa ventilador ou ar condicionado\n`;
     }
   } else if (temp < 15) {
     tips += `🧊 *Dicas para o frio (${temp}°C):*\n\n`;
-    tips += `🍵 Beba líquidos quentes\n`;
-    tips += `🏃‍♀️ Mantenha-se ativo para aquecer\n`;
-    tips += `🧦 Proteja extremidades (mãos, pés, orelhas)\n`;
-    tips += `🍲 Prefira alimentos quentes\n`;
-    tips += `🏠 Mantenha ambientes aquecidos\n`;
+    tips += `🍵 Bebe coisas quentes\n`;
+    tips += `🏃‍♀️ Mexe-te para aquecer o corpo\n`;
+    tips += `🧦 Protege as mãos, pés e orelhas\n`;
+    tips += `🍲 Come comida quente\n`;
+    tips += `🏠 Mantém a casa aquecida\n`;
   } else {
-    tips += `🌡️ *Temperatura agradável (${temp}°C):*\n\n`;
-    tips += `😊 Perfeito para atividades ao ar livre\n`;
-    tips += `🚶‍♀️ Ótimo para caminhadas\n`;
-    tips += `🌳 Aproveite parques e praças\n`;
-    tips += `📸 Dia ideal para fotos\n`;
+    tips += `🌡️ *Temperatura bacana (${temp}°C):*\n\n`;
+    tips += `😊 Perfeito para atividades lá fora\n`;
+    tips += `🚶‍♀️ Fixe para caminhadas\n`;
+    tips += `🌳 Aproveita os jardins e praças\n`;
+    tips += `📸 Dia ideal para tirar fotos\n`;
   }
 
   return tips;
@@ -2001,18 +2063,18 @@ function generateRainTips(weatherData) {
   let tips = '';
 
   if (isRaining) {
-    tips += `☔ *Está chovendo em ${weatherData.city}:*\n\n`;
-    tips += `🌂 Leve guarda-chuva sempre\n`;
-    tips += `👟 Use sapato antiderrapante\n`;
-    tips += `🚗 Dirija com cuidado redobrado\n`;
-    tips += `🏠 Prefira atividades internas\n`;
-    tips += `📱 Tenha guarda-chuva no carro\n`;
+    tips += `☔ *Está chuva em ${weatherData.city}:*\n\n`;
+    tips += `🌂 Leva guarda-chuva sempre\n`;
+    tips += `👟 Usa sapato que não escorrega\n`;
+    tips += `🚗 Conduz com muito cuidado\n`;
+    tips += `🏠 Melhor ficar dentro de casa\n`;
+    tips += `📱 Tem guarda-chuva no carro\n`;
   } else {
     tips += `☀️ *Sem chuva em ${weatherData.city}:*\n\n`;
-    tips += `😊 Dia livre para atividades externas\n`;
-    tips += `🧺 Bom para estender roupas\n`;
-    tips += `🚲 Perfeito para exercícios ao ar livre\n`;
-    tips += `🌳 Aproveite para ir ao parque\n`;
+    tips += `😊 Dia livre para atividades lá fora\n`;
+    tips += `🧺 Bom para estender roupa\n`;
+    tips += `🚲 Fixe para exercícios ao ar livre\n`;
+    tips += `🌳 Aproveita para ir ao jardim\n`;
   }
 
   return tips;
@@ -2025,30 +2087,30 @@ function generateActivityTips(weatherData) {
   let tips = `🏃‍♀️ *Atividades recomendadas:*\n\n`;
 
   if (isRaining) {
-    tips += `☔ *Atividades internas:*\n`;
-    tips += `🏋️‍♀️ Academia ou exercícios em casa\n`;
-    tips += `🛍️ Shopping centers\n`;
-    tips += `📚 Biblioteca ou estudo\n`;
+    tips += `☔ *Atividades dentro de casa:*\n`;
+    tips += `🏋️‍♀️ Ginásio ou exercícios em casa\n`;
+    tips += `🛍️ Shoppings\n`;
+    tips += `📚 Biblioteca ou estudar\n`;
     tips += `🎬 Cinema\n`;
-    tips += `☕ Café com amigos\n`;
+    tips += `☕ Café com os amigos\n`;
   } else if (temp > 30) {
     tips += `🌡️ *Calor (${temp}°C) - atividades na sombra:*\n`;
     tips += `🏊‍♀️ Piscina ou praia\n`;
-    tips += `🌳 Parque com sombra\n`;
-    tips += `🕕 Exercícios antes das 9h ou após 17h\n`;
-    tips += `🛍️ Shopping (ar condicionado)\n`;
-    tips += `🍦 Sorveteria\n`;
+    tips += `🌳 Jardim com sombra\n`;
+    tips += `🕕 Exercícios antes das 9h ou depois das 17h\n`;
+    tips += `🛍️ Shopping (com ar condicionado)\n`;
+    tips += `🍦 Gelados para refrescar\n`;
   } else if (temp < 15) {
-    tips += `🧊 *Frio (${temp}°C) - atividades aquecidas:*\n`;
+    tips += `🧊 *Frio (${temp}°C) - atividades quentinhas:*\n`;
     tips += `☕ Café ou chá quente\n`;
-    tips += `🏋️‍♀️ Academia\n`;
-    tips += `🛍️ Shopping centers\n`;
+    tips += `🏋️‍♀️ Ginásio\n`;
+    tips += `🛍️ Shoppings\n`;
     tips += `📚 Leitura em casa\n`;
     tips += `🎮 Jogos em casa\n`;
   } else {
-    tips += `😊 *Clima perfeito (${temp}°C):*\n`;
+    tips += `😊 *Clima fixe (${temp}°C):*\n`;
     tips += `🚶‍♀️ Caminhada ou corrida\n`;
-    tips += `🚲 Ciclismo\n`;
+    tips += `🚲 Andar de bicicleta\n`;
     tips += `🌳 Piquenique no parque\n`;
     tips += `⚽ Esportes ao ar livre\n`;
     tips += `📸 Fotografia\n`;
@@ -2061,22 +2123,169 @@ function generateGeneralTips(weatherData) {
   const temp = parseInt(weatherData.temperature);
   const isRaining = weatherData.description.toLowerCase().includes('chuva');
 
-  let tips = `💡 *Dicas gerais para hoje:*\n\n`;
+  let tips = `💡 *Dicas para hoje:*\n\n`;
 
   // Dicas de vestuário
-  tips += generateClothingTips(weatherData).replace('👕 *Que roupa usar hoje:*\n\n', '👕 *Vestuário:*\n');
+  tips += generateClothingTips(weatherData).replace('👕 *Como te vestir hoje:*\n\n', '👕 *Como te vestir:*\n');
 
   // Dicas de atividades
   tips += `\n🏃‍♀️ *Atividades:*\n`;
   if (isRaining) {
-    tips += `• Prefira atividades internas\n`;
+    tips += `• Melhor ficar dentro de casa\n`;
   } else if (temp > 25 && temp < 30) {
-    tips += `• Ótimo para atividades ao ar livre\n`;
+    tips += `• Bacana para atividades lá fora\n`;
   } else if (temp > 30) {
-    tips += `• Evite sol forte (10h-16h)\n`;
+    tips += `• Evita o sol forte (10h-16h)\n`;
   } else {
-    tips += `• Vista-se adequadamente para o frio\n`;
+    tips += `• Vista-te bem para o frio\n`;
   }
 
   return tips;
+}
+
+// ===============================================
+// FUNÇÃO ESPECÍFICA PARA PERGUNTAS SOBRE CHUVA
+// ===============================================
+async function handleRainSpecificQuery(analysis, phoneNumber, user) {
+  try {
+    const { city, originalMessage, context } = analysis;
+    const targetCity = city || user?.preferred_city || 'Beira';
+    const timeframe = context?.timeframe;
+
+    // Mensagem de loading específica para chuva
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      `☔ Deixa eu ver se vai chover em ${targetCity}...`,
+      phoneNumber
+    );
+
+    let weatherData;
+    let isForTomorrow = false;
+
+    // Determinar se é para hoje ou amanhã
+    if (timeframe === 'amanha' || originalMessage.toLowerCase().includes('amanhã')) {
+      isForTomorrow = true;
+      const forecast = await weatherService.getWeatherForecast(targetCity, 2);
+      if (forecast && forecast.length > 1) {
+        weatherData = forecast[1]; // Amanhã
+      } else {
+        throw new Error('Não foi possível obter a previsão para amanhã');
+      }
+    } else {
+      // Dados atuais e previsão para hoje
+      weatherData = await weatherService.getCurrentWeather(targetCity, user?.units || 'celsius');
+    }
+
+    // Analisar probabilidade de chuva
+    const rainAnalysis = analyzeRainProbability(weatherData, isForTomorrow);
+
+    // Criar resposta específica sobre chuva
+    let rainMessage = `☔ *Chuva em ${targetCity}*\n\n`;
+
+    if (isForTomorrow) {
+      rainMessage += `📅 *Para amanhã:*\n`;
+    } else {
+      rainMessage += `📅 *Para hoje:*\n`;
+    }
+
+    rainMessage += rainAnalysis.message;
+    rainMessage += `\n\n${rainAnalysis.advice}`;
+
+    // Adicionar dicas específicas para chuva se necessário
+    if (rainAnalysis.willRain) {
+      rainMessage += `\n\n💧 *Dicas para a chuva:*\n`;
+      rainMessage += `• Leva guarda-chuva\n`;
+      rainMessage += `• Sapato que não escorrega\n`;
+      rainMessage += `• Evita roupa clara\n`;
+      rainMessage += `• Conduz com cuidado\n`;
+    }
+
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(rainMessage, phoneNumber);
+
+    // Salvar no histórico
+    await saveOrUpdateAdvancedUser(phoneNumber, {
+      last_city: targetCity,
+      query_count: (user?.query_count || 0) + 1
+    });
+
+    return rainMessage;
+
+  } catch (error) {
+    console.error('❌ Erro na consulta específica de chuva:', error);
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      `❌ Não consegui verificar a chuva agora. Tenta mais tarde.`,
+      phoneNumber
+    );
+    return null;
+  }
+}
+
+function analyzeRainProbability(weatherData, isForTomorrow) {
+  const description = weatherData.description?.toLowerCase() || '';
+  const humidity = weatherData.humidity || 0;
+
+  let willRain = false;
+  let probability = 'baixa';
+  let message = '';
+  let advice = '';
+
+  // Analisar descrição do tempo
+  if (description.includes('chuva') || description.includes('chuvisco') ||
+    description.includes('temporal') || description.includes('aguaceiro')) {
+    willRain = true;
+    probability = 'alta';
+    message = `🌧️ **Sim, vai chover!**\n`;
+    message += `• Condições: ${weatherData.description}\n`;
+    if (humidity > 80) {
+      message += `• Umidade alta: ${humidity}% (confirma chuva)\n`;
+    }
+    advice = `🌂 **Prepara-te para a chuva!** Não sais sem guarda-chuva.`;
+
+  } else if (description.includes('nuvens') || description.includes('nublado') ||
+    description.includes('parcialmente nublado')) {
+
+    if (humidity > 75) {
+      willRain = true;
+      probability = 'moderada';
+      message = `🌥️ **Pode chover!**\n`;
+      message += `• Céu: ${weatherData.description}\n`;
+      message += `• Umidade: ${humidity}% (alta)\n`;
+      advice = `☔ **Leva guarda-chuva por precaução.** As nuvens e a umidade alta indicam possibilidade de chuva.`;
+    } else {
+      probability = 'baixa';
+      message = `⛅ **Pouco provável que chova**\n`;
+      message += `• Céu: ${weatherData.description}\n`;
+      message += `• Umidade: ${humidity}% (normal)\n`;
+      advice = `😊 **Não precisa de guarda-chuva** por agora, mas fica atento às nuvens.`;
+    }
+
+  } else if (description.includes('limpo') || description.includes('claro') ||
+    description.includes('sol')) {
+    probability = 'muito baixa';
+    message = `☀️ **Não vai chover!**\n`;
+    message += `• Céu: ${weatherData.description}\n`;
+    message += `• Umidade: ${humidity}%\n`;
+    advice = `🌞 **Céu limpo!** Podes sair tranquilo, sem chuva à vista.`;
+
+  } else {
+    // Fallback baseado apenas na umidade
+    if (humidity > 80) {
+      willRain = true;
+      probability = 'moderada';
+      message = `🌫️ **Pode chover**\n`;
+      message += `• Umidade muito alta: ${humidity}%\n`;
+      advice = `☔ **Melhor levar guarda-chuva.** A umidade alta sugere possibilidade de chuva.`;
+    } else {
+      probability = 'baixa';
+      message = `🌤️ **Provavelmente não vai chover**\n`;
+      message += `• Umidade: ${humidity}%\n`;
+      advice = `😊 **Parece que não vai chover,** mas fica atento ao céu.`;
+    }
+  }
+
+  return {
+    willRain,
+    probability,
+    message,
+    advice
+  };
 }

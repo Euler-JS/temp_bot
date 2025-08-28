@@ -323,16 +323,23 @@ DADOS METEOROLÓGICOS ATUAIS:
 
 ${forecastInstructions}
 
-USUÁRIO INICIANTE - LINGUAGEM SIMPLES:
-Explique o clima de forma muito simples e prática.
-- Use analogias do dia a dia
-- Evite termos técnicos
-- Foque no que a pessoa precisa saber para o dia
-- Máximo 150 palavras
+USUÁRIO SIMPLES - LINGUAGEM MUITO FÁCIL PARA BEIRENSES:
+Explique o clima usando palavras simples que qualquer pessoa entende.
+- Fale como um vizinho da Beira explicando para outro
+- Use comparações com coisas do dia a dia
+- Não use palavras difíceis ou científicas
+- Máximo 100 palavras
 - Muitos emojis
-- Dicas práticas simples
+- Conselhos práticos e diretos
 
-Resposta amigável para iniciante:`;
+EXEMPLOS DE LINGUAGEM SIMPLES:
+- Em vez de "umidade alta" → "o ar está pesado"
+- Em vez de "nuvens esparsas" → "tem algumas nuvens no céu"
+- Em vez de "sensação térmica" → "mas sentes como se fosse"
+- Em vez de "hidratação" → "bebe muita água"
+- Em vez de "atividades extenuantes" → "trabalhos pesados"
+
+Fala de forma simples e amigável:`;
 
             case 'intermediate':
                 return `${baseData}
@@ -381,42 +388,48 @@ Análise técnica para especialista:`;
 
     async generateIntelligentSuggestions(analysis, weatherData, userContext) {
         try {
-            const timeContext = weatherData.isForecast ? "previsão para amanhã" : "dados atuais";
+            const timeContext = weatherData.isForecast ? "previsão para amanhã" : "dados actuais";
             const prompt = `
-Com base nesta consulta meteorológica, gere 3 sugestões inteligentes e úteis:
+Com base nesta consulta meteorológica, gere 3 sugestões úteis para um moçambicano da Beira:
 
-CONSULTA ATUAL:
+CONSULTA ACTUAL:
 - Tipo: ${analysis.type} (${timeContext})
 - Cidade: ${analysis.city}
 - Intenção: ${analysis.intent}
-- Nível usuário: ${analysis.expertiseLevel}
+- Nível utilizador: ${analysis.expertiseLevel}
 
 DADOS CLIMÁTICOS:
 ${weatherData.isForecast ?
                     `- Temperatura: ${weatherData.minTemp}°C - ${weatherData.maxTemp}°C (amanhã)` :
-                    `- Temperatura: ${weatherData.temperature}°C (atual)`}
+                    `- Temperatura: ${weatherData.temperature}°C (actual)`}
 - Condições: ${weatherData.description}
 
-HISTÓRICO USUÁRIO:
+HISTÓRICO UTILIZADOR:
 - Consultas anteriores: ${userContext.queryCount || 0}
 - Cidade frequente: ${userContext.lastCity || 'N/A'}
 
-OPÇÕES DE SUGESTÕES DISPONÍVEIS:
-1. Previsões: "Tempo amanhã", "Previsão 7 dias", "Próxima semana"
+OPÇÕES DE SUGESTÕES DISPONÍVEIS (linguagem moçambicana casual):
+1. Previsões: "Tempo amanhã", "Como vai estar a semana", "Próxima semana"
 2. Comparações: "Comparar cidades", "Como estava ontem"
-3. Atividades: "Que roupa usar", "Atividades hoje", "Dicas calor"
-4. Alertas: "Alertas chuva", "Quando chover"
-5. Educativas: "O que é umidade", "Como ler clima"
-6. Práticas: "Dicas frio", "Proteção UV", "Hidratação"
+3. Atividades: "Que roupa vestir", "Actividades hoje", "Dicas para calor"
+4. Alertas: "Alertas de chuva", "Quando vai chover"
+5. Educativas: "O que é umidade", "Como entender o tempo"
+6. Práticas: "Dicas para frio", "Protecção solar", "Hidratação"
 7. Comandos: "/sugestoes", "Ajuda", "Configurações"
 8. Bairros Beira: "Conselhos Macúti", "Dicas Manga", "Goto chuva"
 
 REGRAS IMPORTANTES:
-- MÁXIMO 15 caracteres por sugestão (para caber nos botões)
-- Use termos simples e diretos
-- Priorize relevância para situação atual
+- MÁXIMO 18 caracteres por sugestão (para caber nos botões)
+- Use português moçambicano casual (como "fixe", "eh pá", "como está")
+- Priorize relevância para a situação actual
 - Misture tipos diferentes de sugestões
-- Use linguagem natural e simples
+- Use linguagem natural e familiar da Beira
+
+EXEMPLOS DE ESTILO MOÇAMBICANO:
+- "Tempo amanhã?" (em vez de "Previsão amanhã")
+- "Que roupa usar?" (em vez de "Vestuário hoje")
+- "Vai chover?" (em vez de "Alertas chuva")
+- "Como vai estar?" (em vez de "Previsão")
 
 Formato: ["sugestão 1", "sugestão 2", "sugestão 3"]
 
