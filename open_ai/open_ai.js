@@ -408,6 +408,8 @@ OPÇÕES DE SUGESTÕES DISPONÍVEIS:
 4. Alertas: "Alertas chuva", "Quando chover"
 5. Educativas: "O que é umidade", "Como ler clima"
 6. Práticas: "Dicas frio", "Proteção UV", "Hidratação"
+7. Comandos: "/sugestoes", "Ajuda", "Configurações"
+8. Bairros Beira: "Conselhos Macúti", "Dicas Manga", "Goto chuva"
 
 REGRAS IMPORTANTES:
 - MÁXIMO 15 caracteres por sugestão (para caber nos botões)

@@ -1,13 +1,20 @@
 // whatsapp_api/connection.js - Adaptado para Temperature Bot
 require('dotenv').config();
 const axios = require("axios");
-
+const crypto = require('crypto');
 
 class WhatsAppApi {
     constructor(token, phoneNumberID) {
         this.token = token;
         this.phoneNumberID = phoneNumberID;
+        this.appSecret = process.env.FACEBOOK_APP_SECRET;
         // console.log('WhatsAppApi initialized with token:', this.token, 'and phoneNumberID:', this.phoneNumberID);
+    }
+
+    // Gerar appsecret_proof se disponível
+    generateAppSecretProof() {
+        if (!this.appSecret) return null;
+        return crypto.createHmac('sha256', this.appSecret).update(this.token).digest('hex');
     }
 
     // Método principal para enviar mensagens de texto
@@ -27,16 +34,20 @@ class WhatsAppApi {
         const messageData = mensagem;
 
         try {
-            const response = await axios.post(
-                `https://graph.facebook.com/v19.0/${this.phoneNumberID}/messages`,
-                messageData,
-                {
-                    headers: {
-                        'Authorization': `Bearer ${this.token}`,
-                        'Content-Type': 'application/json'
-                    }
-                }
-            );
+            // Preparar headers
+            const headers = {
+                'Authorization': `Bearer ${this.token}`,
+                'Content-Type': 'application/json'
+            };
+
+            // Construir URL com appsecret_proof se disponível
+            let url = `https://graph.facebook.com/v19.0/${this.phoneNumberID}/messages`;
+            const appSecretProof = this.generateAppSecretProof();
+            if (appSecretProof) {
+                url += `?appsecret_proof=${appSecretProof}`;
+            }
+
+            const response = await axios.post(url, messageData, { headers });
             console.log('Message sent successfully:', response.data);
             return response.data;
         } catch (error) {
@@ -81,20 +92,38 @@ class WhatsAppApi {
     // Método principal para enviar mensagens interativas
     async enviarMensagemInterativaUsandoWhatsappAPI(mensagemInterativa) {
         try {
-            const response = await axios.post(
-                `https://graph.facebook.com/v19.0/${this.phoneNumberID}/messages`,
-                mensagemInterativa,
-                {
-                    headers: {
-                        'Authorization': `Bearer ${this.token}`,
-                        'Content-Type': 'application/json'
-                    }
-                }
-            );
-            console.log('Interactive message sent successfully:', response.data);
+            console.log('🔄 Tentando enviar mensagem interativa...');
+            console.log('📄 Payload:', JSON.stringify(mensagemInterativa, null, 2));
+
+            // Preparar headers
+            const headers = {
+                'Authorization': `Bearer ${this.token}`,
+                'Content-Type': 'application/json'
+            };
+
+            // Adicionar appsecret_proof se disponível
+            const appSecretProof = this.generateAppSecretProof();
+
+            // Construir URL com ou sem appsecret_proof
+            let url = `https://graph.facebook.com/v19.0/${this.phoneNumberID}/messages`;
+            if (appSecretProof) {
+                url += `?appsecret_proof=${appSecretProof}`;
+                console.log('🔐 Usando appsecret_proof para autenticação');
+            }
+
+            const response = await axios.post(url, mensagemInterativa, { headers });
+            console.log('✅ Interactive message sent successfully:', response.data);
             return response.data;
+
         } catch (error) {
-            console.error('Error sending interactive message:', error.response ? error.response.data : error.message);
+            console.error('❌ Error sending interactive message:');
+            console.error('📊 Status:', error.response?.status);
+            console.error('📄 Response data:', JSON.stringify(error.response?.data, null, 2));
+            console.error('🔧 Request config:', {
+                url: error.config?.url,
+                headers: error.config?.headers,
+                data: error.config?.data
+            });
             throw error;
         }
     }
