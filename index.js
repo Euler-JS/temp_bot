@@ -164,6 +164,20 @@ async function processAdvancedTextMessage(messageText, phoneNumber, enableAutoDe
       return await handleSafetyAdviceCommand(phoneNumber, user);
     }
 
+    // Comando para zonas seguras e pontos de refúgio
+    if (messageText.toLowerCase().startsWith('/zonas_seguras') ||
+      messageText.toLowerCase().startsWith('/zonas-seguras') ||
+      messageText.toLowerCase() === 'zonas_seguras' ||
+      messageText.toLowerCase() === 'zonas seguras') {
+      return await handleSafeZonesCommand(phoneNumber, user);
+    }
+
+    // Comando para alertas meteorológicos de perigo
+    if (messageText.toLowerCase().startsWith('/alertas') ||
+      messageText.toLowerCase() === 'alertas') {
+      return await handleWeatherAlertsCommand(phoneNumber, user);
+    }
+
     // Comando para apresentação completa da Joana Bot
     if (messageText.toLowerCase().startsWith('/joana') ||
       messageText.toLowerCase().startsWith('/sobre') ||
@@ -726,6 +740,155 @@ async function sendNeighborhoodSelectionButtons(phoneNumber) {
 
   } catch (error) {
     console.error('❌ Erro ao enviar botões de bairros:', error);
+  }
+}
+
+// ===============================================
+// COMANDO ZONAS SEGURAS E PONTOS DE REFÚGIO
+// ===============================================
+
+async function handleSafeZonesCommand(phoneNumber, user) {
+  try {
+    console.log(`🛡️ Comando /zonas_seguras acionado para ${phoneNumber}`);
+
+    // Buscar dados atuais do clima para contextualizar as zonas seguras
+    const targetCity = user?.preferred_city || 'Beira';
+    const weatherData = await weatherService.getCurrentWeather(targetCity, user?.units || 'celsius');
+
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, '🔍 A procurar as zonas mais seguras na região...');
+
+    // Gerar informações sobre zonas seguras com AI
+    const safeZonesInfo = await openaiService.generateSafeZonesInformation(weatherData, user);
+
+    let finalMessage = safeZonesInfo.message;
+
+    // Enviar mensagem principal
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(finalMessage, phoneNumber);
+
+    // Enviar lista interativa com opções de zonas seguras
+    // await sendSafeZonesInteractiveList(phoneNumber, weatherData, user);
+
+    // Atualizar dados do usuário
+    await saveOrUpdateAdvancedUser(phoneNumber, {
+      preferred_city: targetCity,
+      last_command: '/zonas_seguras'
+    });
+
+    return finalMessage;
+
+  } catch (error) {
+    console.error('❌ Erro ao processar comando /zonas_seguras:', error);
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      "❌ Eh pá, não consegui carregar as informações das zonas seguras agora. Tenta mais tarde!",
+      phoneNumber
+    );
+    return null;
+  }
+}
+
+async function sendSafeZonesInteractiveList(phoneNumber, weatherData, user) {
+  try {
+    const city = weatherData.city.toLowerCase();
+
+    // Gerar opções específicas baseadas na cidade e condições atuais
+    const safeZonesOptions = await openaiService.generateSafeZonesOptions(weatherData, user);
+
+    if (safeZonesOptions.success && safeZonesOptions.options.length > 0) {
+      await whatsappApi.enviarListaZonasSeguras(
+        phoneNumber,
+        safeZonesOptions.options,
+        weatherData
+      );
+    } else {
+      // Fallback com opções padrão
+      const defaultOptions = [
+        { id: 'centros_evacuacao', title: 'Centros Evacuação', description: 'Locais oficiais de refúgio' }, // 16 chars
+        { id: 'hospitais', title: 'Hospitais 24h', description: 'Assistência médica disponível' }, // 13 chars
+        { id: 'escolas_seguras', title: 'Escolas Seguras', description: 'Refúgio temporário' }, // 15 chars
+        { id: 'edificios_publicos', title: 'Edifícios Públicos', description: 'Estruturas resistentes' }, // 18 chars
+        { id: 'contactos_emergencia', title: 'Contactos SOS', description: 'Números importantes' } // 13 chars
+      ];
+
+      await whatsappApi.enviarListaZonasSeguras(phoneNumber, defaultOptions, weatherData);
+    }
+
+  } catch (error) {
+    console.error('❌ Erro ao enviar lista de zonas seguras:', error);
+  }
+}
+
+// ===============================================
+// COMANDO ALERTAS METEOROLÓGICOS DE PERIGO
+// ===============================================
+
+async function handleWeatherAlertsCommand(phoneNumber, user) {
+  try {
+    console.log(`⚠️ Comando /alertas acionado para ${phoneNumber}`);
+
+    // Buscar dados atuais do clima para análise de perigos
+    const targetCity = user?.preferred_city || 'Beira';
+    const weatherData = await weatherService.getCurrentWeather(targetCity, user?.units || 'celsius');
+
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, '🚨 A analisar condições meteorológicas para detectar perigos...');
+
+    // Gerar análise de alertas com AI
+    const alertsAnalysis = await openaiService.generateWeatherAlertsAnalysis(weatherData, user);
+
+    let finalMessage = alertsAnalysis.message;
+
+    // Enviar mensagem principal
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(finalMessage, phoneNumber);
+
+    // Se houver alertas ativos, enviar lista interativa com ações recomendadas
+    if (alertsAnalysis.hasActiveAlerts) {
+      await sendWeatherAlertsInteractiveList(phoneNumber, weatherData, alertsAnalysis, user);
+    }
+
+    // Atualizar dados do usuário
+    await saveOrUpdateAdvancedUser(phoneNumber, {
+      preferred_city: targetCity,
+      last_command: '/alertas'
+    });
+
+    return finalMessage;
+
+  } catch (error) {
+    console.error('❌ Erro ao processar comando /alertas:', error);
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      "❌ Eh pá, não consegui verificar os alertas agora. Para emergências ligue 119 (INGC).",
+      phoneNumber
+    );
+    return null;
+  }
+}
+
+async function sendWeatherAlertsInteractiveList(phoneNumber, weatherData, alertsAnalysis, user) {
+  try {
+    // Gerar opções específicas baseadas nos alertas detectados
+    const alertOptions = await openaiService.generateAlertActionOptions(weatherData, alertsAnalysis, user);
+
+    if (alertOptions.success && alertOptions.options.length > 0) {
+      await whatsappApi.enviarListaAlertasMeteorologicos(
+        phoneNumber,
+        alertOptions.options,
+        weatherData,
+        alertsAnalysis
+      );
+    } else {
+      // Fallback com opções padrão baseadas no tipo de alerta
+      const defaultOptions = [
+        { id: 'medidas_protecao', title: 'Medidas Proteção', description: 'Como se proteger agora' },
+        { id: 'monitoramento', title: 'Monitoramento', description: 'Acompanhar evolução clima' },
+        { id: 'contactos_urgencia', title: 'Contactos Urgência', description: 'Números para emergências' },
+        { id: 'zonas_evitar', title: 'Zonas Evitar', description: 'Locais perigosos agora' },
+        { id: 'kit_emergencia', title: 'Kit Emergência', description: 'O que ter preparado' }
+      ];
+
+      await whatsappApi.enviarListaAlertasMeteorologicos(phoneNumber, defaultOptions, weatherData, alertsAnalysis);
+    }
+
+  } catch (error) {
+    console.error('❌ Erro ao enviar lista de alertas:', error);
   }
 }
 
@@ -2128,6 +2291,81 @@ async function processAdvancedInteractiveMessage(interactive, phoneNumber) {
         await handleAdvancedColdTipsRequest(phoneNumber);
         break;
 
+      // Handlers para zonas seguras e pontos de refúgio
+      case "centros_evacuacao":
+        await handleEvacuationCentersRequest(phoneNumber);
+        break;
+
+      case "hospitais":
+      case "hospitais_24h":
+        await handleEmergencyHospitalsRequest(phoneNumber);
+        break;
+
+      case "escolas_seguras":
+        await handleSafeSchoolsRequest(phoneNumber);
+        break;
+
+      case "edificios_publicos":
+        await handlePublicBuildingsRequest(phoneNumber);
+        break;
+
+      case "contactos_emergencia":
+      case "contactos_sos":
+        await handleEmergencyContactsRequest(phoneNumber);
+        break;
+
+      case "rotas_evacuacao":
+      case "rotas_seguras":
+        await handleEvacuationRoutesRequest(phoneNumber);
+        break;
+
+      case "kit_emergencia":
+        await handleEmergencyKitRequest(phoneNumber);
+        break;
+
+      // Handlers para alertas meteorológicos
+      case "medidas_protecao":
+      case "medidas_urgentes":
+        await handleProtectionMeasuresRequest(phoneNumber);
+        break;
+
+      case "monitoramento":
+      case "monitorar_situacao":
+        await handleWeatherMonitoringRequest(phoneNumber);
+        break;
+
+      case "contactos_urgencia":
+        await handleUrgencyContactsRequest(phoneNumber);
+        break;
+
+      case "zonas_evitar":
+        await handleDangerousZonesRequest(phoneNumber);
+        break;
+
+      case "precaucoes_basicas":
+        await handleBasicPrecautionsRequest(phoneNumber);
+        break;
+
+      case "preparacao":
+        await handleEmergencyPreparationRequest(phoneNumber);
+        break;
+
+      case "dicas_conforto":
+        await handleComfortTipsRequest(phoneNumber);
+        break;
+
+      case "proximos_dias":
+        await handleUpcomingWeatherRequest(phoneNumber);
+        break;
+
+      case "kit_sobrevivencia":
+        await handleSurvivalKitRequest(phoneNumber);
+        break;
+
+      case "locais_seguros":
+        await handleSafeLocationsRequest(phoneNumber);
+        break;
+
       default:
         // Para IDs gerados dinamicamente pela AI, usar handler genérico
         if (listId.startsWith('conselho_') || listId.includes('_')) {
@@ -2755,7 +2993,9 @@ async function sendAdvancedHelp(phoneNumber, user) {
 
   helpMessage += `⭐ *COMANDOS ESPECIAIS:*\n`;
   helpMessage += `• \`/sugestoes\` - Vou dar-te umas sugestões fixes\n`;
-  helpMessage += `• \`/conselhos\` - Conselhos para os bairros da Beira\n\n`;
+  helpMessage += `• \`/conselhos\` - Conselhos para os bairros da Beira\n`;
+  helpMessage += `• \`/zonas_seguras\` - Locais seguros durante emergências\n`;
+  helpMessage += `• \`/alertas\` - Verificar perigos meteorológicos atuais\n\n`;
 
   const nivelMap = {
     'basic': 'Principiante (tás a começar)',
@@ -3258,5 +3498,307 @@ async function handleJoanaBotIntroduction(phoneNumber, user) {
       phoneNumber
     );
     return null;
+  }
+}
+
+// ===============================================
+// HANDLERS PARA ZONAS SEGURAS E PONTOS DE REFÚGIO
+// ===============================================
+
+async function handleEvacuationCentersRequest(phoneNumber) {
+  try {
+    const user = await getUserByContact(phoneNumber);
+    const city = user?.preferred_city || 'Beira';
+
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, '🏛️ A procurar centros de evacuação oficiais...');
+
+    const weatherData = await weatherService.getCurrentWeather(city);
+    const evacuationInfo = await openaiService.generateEvacuationCentersInfo(weatherData, user);
+
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(evacuationInfo.message, phoneNumber);
+  } catch (error) {
+    console.error('❌ Erro ao processar centros de evacuação:', error);
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      "❌ Não consegui carregar informações dos centros de evacuação. Para emergências ligue 119 (INGC).",
+      phoneNumber
+    );
+  }
+}
+
+async function handleEmergencyHospitalsRequest(phoneNumber) {
+  try {
+    const user = await getUserByContact(phoneNumber);
+    const city = user?.preferred_city || 'Beira';
+
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, '🏥 A procurar hospitais de emergência...');
+
+    const weatherData = await weatherService.getCurrentWeather(city);
+    const hospitalInfo = await openaiService.generateEmergencyHospitalsInfo(weatherData, user);
+
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(hospitalInfo.message, phoneNumber);
+  } catch (error) {
+    console.error('❌ Erro ao processar hospitais de emergência:', error);
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      "❌ Não consegui carregar informações dos hospitais. Para emergência médica ligue 119.",
+      phoneNumber
+    );
+  }
+}
+
+async function handleEmergencyContactsRequest(phoneNumber) {
+  const emergencyMessage = `📱 *CONTACTOS DE EMERGÊNCIA ESSENCIAIS*
+
+🚨 *NÚMEROS PRINCIPAIS:*
+• **INGC (Gestão de Calamidades): 119**
+• **Bombeiros: 198**  
+• **Polícia: 119**
+• **Emergência Médica: 119**
+
+🏥 *SAÚDE:*
+• Hospital Central da Beira: +258 23 323 229
+• Cruz Vermelha: +258 21 491 323
+
+⚡ *SERVIÇOS PÚBLICOS:*
+• EDM (Electricidade): 1400
+• Águas de Moçambique: +258 21 320 024
+
+📻 *COMUNICAÇÃO:*
+• Rádio Moçambique FM: 91.2 FM
+• STV: +258 21 354 400
+
+💡 *DICAS IMPORTANTES:*
+• Memorize pelo menos o **119** (emergência geral)
+• Mantenha estes números no papel também
+• Em caso de rede fraca, tente SMS
+• Cruz Vermelha tem equipas de socorro
+
+🆘 *Durante emergências:*
+• Mantenha a calma
+• Diga sua localização clara
+• Descreva a situação brevemente
+• Siga instruções dos operadores
+
+Guarda estes números - podem salvar vidas! 🙏`;
+
+  await whatsappApi.enviarMensagemUsandoWhatsappAPI(emergencyMessage, phoneNumber);
+}
+
+async function handleEmergencyKitRequest(phoneNumber) {
+  const kitMessage = `🎒 *KIT DE EMERGÊNCIA COMPLETO*
+
+💧 *ÁGUA E ALIMENTAÇÃO (72h):*
+• 3 litros de água por pessoa
+• Alimentos enlatados/secos
+• Abrelatas manual
+• Biscoitos e barras energéticas
+
+💊 *MEDICAMENTOS E SAÚDE:*
+• Medicamentos pessoais (1 semana)
+• Kit primeiros socorros
+• Termómetro
+• Máscaras e luvas
+
+🔦 *ILUMINAÇÃO E COMUNICAÇÃO:*
+• Lanterna com pilhas extra
+• Rádio portátil
+• Carregador portátil (power bank)
+• Apito para sinalização
+
+📄 *DOCUMENTOS IMPORTANTES:*
+• BI, passaporte (cópias plastificadas)
+• Documentos médicos
+• Contactos de emergência escritos
+• Dinheiro em notas pequenas
+
+👕 *ROUPA E PROTECÇÃO:*
+• Mudas de roupa (3 dias)
+• Roupa de chuva/impermeável
+• Cobertor térmico
+• Sapatos resistentes à água
+
+🔧 *FERRAMENTAS BÁSICAS:*
+• Canivete multiusos
+• Cordas/fita adesiva
+• Sacos plásticos resistentes
+• Fósforos à prova de água
+
+👶 *SE HÁ CRIANÇAS/IDOSOS:*
+• Fraldas e leite em pó
+• Medicamentos específicos
+• Brinquedos pequenos (conforto)
+
+📦 *ONDE GUARDAR:*
+• Mochila à prova de água
+• Local de fácil acesso
+• Verificar validades a cada 6 meses
+
+💡 *Lembra:* Um kit preparado pode salvar vidas! Não esperes pela emergência para organizar. 🚨`;
+
+  await whatsappApi.enviarMensagemUsandoWhatsappAPI(kitMessage, phoneNumber);
+}
+
+async function handleEvacuationRoutesRequest(phoneNumber) {
+  const routesMessage = `🛣️ *ROTAS DE EVACUAÇÃO DE EMERGÊNCIA*
+
+🚗 *ROTAS PRINCIPAIS PARA ZONAS ALTAS:*
+• **Via EN1:** Beira → Dondo → Nhamatanda (terreno elevado)
+• **Via N6:** Beira → Tica → Gorongosa (zona montanhosa)
+• **Estrada da Manga:** Beira → Manga → zona rural segura
+
+🏔️ *DESTINOS SEGUROS PRIORITÁRIOS:*
+• **Universidade Católica de Moçambique** (terreno alto)
+• **Hospital Central da Beira** (estrutura reforçada)
+• **Escola Secundária Samora Machel** (edifício resistente)
+• **Centro de Evacuação - Estádio do Martirios**
+
+🚌 *TRANSPORTE PÚBLICO DE EMERGÊNCIA:*
+• Chapas param em **Praça do Município**
+• Autocarros municipais activados em emergência
+• **Ponto de recolha:** Mercado Central
+• **Ponto alternativo:** Terminal Rodoviário
+
+⚠️ *ROTAS A EVITAR:*
+• **Baixa da cidade** (risco de inundação)
+• **Macuti/Praia** (zona costeira vulnerável)
+• **Ponta Gea** (baixa altitude)
+• Pontes durante chuvas intensas
+
+🧭 *DICAS DE NAVEGAÇÃO:*
+• Siga sempre para terrenos elevados
+• Evite atravessar águas correntes
+• Use marco referencial: **Torre de TV da Beira**
+• Em caso de dúvida, pergunte às autoridades locais
+
+📱 *Para navegação GPS:*
+• Coordenadas seguras: -19.8155, 34.8386 (UMC)
+• Backup: -19.8436, 34.8389 (Hospital Central)
+
+🚨 **Lembra:** Sai cedo, conduz devagar, mantém combustível no tanque! 
+
+Digite */zonas_seguras* para locais de abrigo específicos.`;
+
+  await whatsappApi.enviarMensagemUsandoWhatsappAPI(routesMessage, phoneNumber);
+}
+
+// ===============================================
+// HANDLERS PARA AÇÕES DE ALERTAS METEOROLÓGICOS
+// ===============================================
+
+async function handleProtectionMeasuresRequest(phoneNumber) {
+  try {
+    const user = await getUserByContact(phoneNumber);
+    const city = user?.preferred_city || 'Beira';
+
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, '🛡️ A gerar medidas de proteção específicas...');
+
+    const weatherData = await weatherService.getCurrentWeather(city);
+    const protectionInfo = await openaiService.generateProtectionMeasuresInfo(weatherData, user);
+
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(protectionInfo.message, phoneNumber);
+  } catch (error) {
+    console.error('❌ Erro ao processar medidas de proteção:', error);
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      "❌ Não consegui gerar medidas específicas. Mantenha-se em local seguro e siga orientações das autoridades.",
+      phoneNumber
+    );
+  }
+}
+
+async function handleWeatherMonitoringRequest(phoneNumber) {
+  const monitoringMessage = `📡 *COMO MONITORAR O TEMPO*
+
+📱 *APPS ESSENCIAIS:*
+• Weather.com - previsões confiáveis
+• Windy - mapas meteorológicos
+• INAM Moçambique - dados oficiais
+
+📻 *FONTES LOCAIS:*
+• Rádio Moçambique (91.2 FM)
+• TVM - televisão nacional
+• STV - notícias locais
+
+🌐 *WEBSITES OFICIAIS:*
+• inam.gov.mz - Instituto de Meteorologia
+• ingc.gov.mz - Gestão de Calamidades
+
+⚠️ *SINAIS DE ALERTA:*
+• Mudanças bruscas na temperatura
+• Vento forte repentino
+• Chuva muito intensa
+• Céu muito escuro durante o dia
+
+📊 *O QUE OBSERVAR:*
+• Temperatura: variações acima de 5°C
+• Vento: velocidade acima de 40 km/h
+• Chuva: mais de 50mm em 24h
+• Humidade: acima de 90%
+
+💡 *DICAS:*
+• Verifique previsão 2x por dia
+• Configure alertas no telemóvel
+• Tenha rádio de emergência
+• Siga páginas oficiais nas redes sociais
+
+📞 *Informações:** 119 (INGC)`;
+
+  await whatsappApi.enviarMensagemUsandoWhatsappAPI(monitoringMessage, phoneNumber);
+}
+
+async function handleUrgencyContactsRequest(phoneNumber) {
+  const urgencyMessage = `🆘 *CONTACTOS DE URGÊNCIA METEOROLÓGICA*
+
+🚨 *EMERGÊNCIA GERAL:*
+• **INGC (Gestão de Calamidades): 119**
+• **Bombeiros: 198**
+• **Polícia: 119**
+
+🌀 *METEOROLOGIA:*
+• INAM (Instituto Nacional): +258 21 491 150
+• Previsões 24h: 1242 (SMS grátis)
+
+🏥 *SAÚDE DE EMERGÊNCIA:*
+• Hospital Central: +258 23 323 229 (Beira)
+• Cruz Vermelha: +258 21 491 323
+
+📻 *COMUNICAÇÃO:*
+• Rádio Moçambique: +258 21 320 000
+• STV: +258 21 354 400
+
+⚡ *SERVIÇOS ESSENCIAIS:*
+• EDM (Energia): 1400
+• Águas: +258 21 320 024
+
+🌊 *ESPECÍFICOS PARA BEIRA:*
+• Comando Provincial: +258 23 323 206
+• Portos CFM: +258 23 321 781
+
+💡 *COMO USAR:*
+• Mantenha calma ao ligar
+• Diga localização clara
+• Descreva situação brevemente
+• Siga instruções dos operadores
+
+📝 *IMPORTANTE:* Guarde estes números no papel também - telemóvel pode ficar sem bateria!`;
+
+  await whatsappApi.enviarMensagemUsandoWhatsappAPI(urgencyMessage, phoneNumber);
+}
+
+async function handleDangerousZonesRequest(phoneNumber) {
+  try {
+    const user = await getUserByContact(phoneNumber);
+    const city = user?.preferred_city || 'Beira';
+
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, '⚠️ A identificar zonas perigosas...');
+
+    const weatherData = await weatherService.getCurrentWeather(city);
+    const dangerousZonesInfo = await openaiService.generateDangerousZonesInfo(weatherData, user);
+
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(dangerousZonesInfo.message, phoneNumber);
+  } catch (error) {
+    console.error('❌ Erro ao processar zonas perigosas:', error);
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      "❌ Não consegui identificar zonas específicas. Evite áreas baixas, próximas a rios e encostas durante emergências.",
+      phoneNumber
+    );
   }
 }

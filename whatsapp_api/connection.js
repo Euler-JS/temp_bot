@@ -977,6 +977,118 @@ class WhatsAppApi {
         return await this.enviarMensagemInterativaUsandoWhatsappAPI(adviceMenu);
     }
 
+    // **NOVO** - Lista de zonas seguras e pontos de refúgio
+    async enviarListaZonasSeguras(numeroCelular, opcoes, weatherData) {
+        if (!opcoes || opcoes.length === 0) {
+            return await this.enviarMensagemUsandoWhatsappAPI(
+                "❌ Não foi possível carregar informações das zonas seguras. Tente mais tarde.",
+                numeroCelular
+            );
+        }
+
+        const sections = [
+            {
+                title: "🛡️ Zonas Seguras", // Reduzido para 16 caracteres
+                rows: opcoes.slice(0, 10).map((opcao, index) => ({
+                    id: opcao.id || `safe_zone_${index}`,
+                    title: opcao.title.length > 24 ? opcao.title.substring(0, 21) + '...' : opcao.title,
+                    description: opcao.description.length > 72 ? opcao.description.substring(0, 69) + '...' : opcao.description
+                }))
+            }
+        ];
+
+        const city = weatherData.city;
+        const condition = weatherData.description;
+        const temp = parseInt(weatherData.temperature);
+
+        const safeZonesMenu = {
+            messaging_product: 'whatsapp',
+            recipient_type: "individual",
+            to: numeroCelular,
+            type: "interactive",
+            interactive: {
+                type: "list",
+                header: {
+                    type: "text",
+                    text: "🛡️ Zonas Seguras"
+                },
+                body: {
+                    text: `🏙️ *${city}* - ${temp}°C, ${condition}\n\nEscolha uma categoria para informações específicas sobre locais seguros e pontos de refúgio durante emergências climáticas:`
+                },
+                footer: {
+                    text: "🚨 Emergência: 119 (INGC)"
+                },
+                action: {
+                    button: "Ver Opções",
+                    sections: sections
+                }
+            }
+        };
+
+        return await this.enviarMensagemInterativaUsandoWhatsappAPI(safeZonesMenu);
+    }
+
+    // **NOVO** - Lista de alertas meteorológicos e ações
+    async enviarListaAlertasMeteorologicos(numeroCelular, opcoes, weatherData, alertsAnalysis) {
+        if (!opcoes || opcoes.length === 0) {
+            return await this.enviarMensagemUsandoWhatsappAPI(
+                "❌ Não foi possível carregar ações para os alertas. Mantenha-se atento às condições.",
+                numeroCelular
+            );
+        }
+
+        const sections = [
+            {
+                title: "🚨 Ações Alertas", // 15 chars - dentro do limite
+                rows: opcoes.slice(0, 10).map((opcao, index) => ({
+                    id: opcao.id || `alert_action_${index}`,
+                    title: opcao.title.length > 24 ? opcao.title.substring(0, 21) + '...' : opcao.title,
+                    description: opcao.description.length > 72 ? opcao.description.substring(0, 69) + '...' : opcao.description
+                }))
+            }
+        ];
+
+        const city = weatherData.city;
+        const condition = weatherData.description;
+        const temp = parseInt(weatherData.temperature);
+        const alertLevel = alertsAnalysis.alertLevel || 'none';
+
+        // Emoji baseado no nível de alerta
+        const alertEmoji = {
+            'critical': '🔴',
+            'high': '🟠',
+            'medium': '🟡',
+            'low': '🟢',
+            'none': '✅'
+        };
+
+        const alertsMenu = {
+            messaging_product: 'whatsapp',
+            recipient_type: "individual",
+            to: numeroCelular,
+            type: "interactive",
+            interactive: {
+                type: "list",
+                header: {
+                    type: "text",
+                    text: "🚨 Alertas Meteorológicos"
+                },
+                body: {
+                    text: `${alertEmoji[alertLevel]} *${city}* - ${temp}°C, ${condition}\n\nNível: ${alertLevel.toUpperCase()}\n\nEscolha uma ação baseada nos alertas meteorológicos detectados:`
+                },
+                footer: {
+                    text: "🆘 Emergência: 119 (INGC)"
+                },
+                action: {
+                    button: "Ver Ações",
+                    sections: sections
+                }
+            }
+        };
+
+        return await this.enviarMensagemInterativaUsandoWhatsappAPI(alertsMenu);
+    }
+
     // **UTILITÁRIOS AUXILIARES**
 
     getContextualDescription(sugestao, contexto) {

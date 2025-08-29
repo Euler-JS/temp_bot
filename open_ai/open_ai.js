@@ -718,6 +718,711 @@ Responde de forma natural como um moçambicano experiente daria este conselho, m
     }
 
     // ===============================================
+    // INFORMAÇÕES SOBRE ZONAS SEGURAS E REFÚGIO
+    // ===============================================
+
+    async generateSafeZonesInformation(weatherData, userContext = {}) {
+        try {
+            if (!this.token) {
+                return this.generateBasicSafeZonesInformation(weatherData);
+            }
+
+            const prompt = this.buildSafeZonesInformationPrompt(weatherData, userContext);
+            const response = await this.callOpenAI(prompt, 0.7);
+
+            return {
+                success: true,
+                message: response.trim(),
+                method: 'ai_powered'
+            };
+
+        } catch (error) {
+            console.error('❌ Erro AI safe zones info:', error.message);
+            return this.generateBasicSafeZonesInformation(weatherData);
+        }
+    }
+
+    buildSafeZonesInformationPrompt(weatherData, userContext) {
+        const temp = parseInt(weatherData.temperature);
+        const city = weatherData.city.toLowerCase();
+        const condition = weatherData.description;
+
+        return `O utilizador pediu informações sobre zonas seguras e pontos de refúgio em ${city}. Com ${temp}°C e ${condition}, preciso dar informações práticas de segurança.
+
+INFORMAÇÕES SOBRE ZONAS SEGURAS EM ${city.toUpperCase()}:
+
+${city === 'beira' ? `
+🛡️ *BEIRA - Zonas Seguras e Pontos de Refúgio:*
+
+✅ *CENTROS DE EVACUAÇÃO OFICIAIS:*
+• Centro Comunitário da Manga - zona alta e segura
+• Escola Secundária Samora Machel - estrutura resistente
+• Hospital Central da Beira - sempre operacional
+• Centro de Saúde do Macúti - ponto de apoio
+• Estádio do Ferroviário - área ampla para concentração
+
+🏥 *HOSPITAIS E CENTROS DE SAÚDE:*
+• Hospital Central da Beira (24h)
+• Hospital Privado Beira Medical Centre
+• Centro de Saúde da Manga
+• Centro de Saúde do Goto
+• Clínica São Lucas
+
+🏫 *ESCOLAS EM ZONAS SEGURAS:*
+• Escola Secundária Samora Machel
+• Escola Primária da Manga
+• Instituto Industrial da Beira
+• Universidade Católica de Moçambique
+
+` : `
+🛡️ *${city.toUpperCase()} - Zonas Seguras e Pontos de Refúgio:*
+
+✅ *TIPOS DE LOCAIS SEGUROS:*
+• Edifícios públicos em zonas altas
+• Hospitais e centros de saúde
+• Escolas com estruturas sólidas
+• Centros comunitários
+• Igrejas em locais elevados
+`}
+
+🌦️ *BASEADO NO TEMPO ATUAL (${temp}°C, ${condition}):*
+${this.getCurrentSafetyRecommendations(temp, condition)}
+
+🎒 *KIT DE EMERGÊNCIA ESSENCIAL:*
+• Água potável (3 litros por pessoa)
+• Alimentos não perecíveis (3 dias)
+• Medicamentos pessoais
+• Lanterna e pilhas extras
+• Rádio portátil
+• Documentos em saco plástico
+• Roupa extra e cobertor
+
+📱 *CONTACTOS DE EMERGÊNCIA SEMPRE À MÃO:*
+• INGC (Gestão de Calamidades): 119
+• Bombeiros: 198
+• Polícia: 119
+• Cruz Vermelha: +258 21 491 323
+
+🗺️ *COMO CHEGAR AOS PONTOS SEGUROS:*
+• Evite zonas baixas durante evacuação
+• Use rotas principais pavimentadas
+• Mantenha-se em grupo quando possível
+• Siga instruções das autoridades locais
+
+💡 *Dica Principal:* Tenha sempre um plano de evacuação preparado e conheça pelo menos 2 rotas diferentes para chegar aos pontos seguros!
+
+Responde de forma natural e tranquilizadora como um moçambicano experiente daria este conselho, máximo 500 palavras:`;
+    }
+
+    getCurrentSafetyRecommendations(temp, condition) {
+        if (condition.toLowerCase().includes('chuva') || condition.toLowerCase().includes('tempestade')) {
+            return `🌧️ Com chuva atual, PROCURE IMEDIATAMENTE:
+• Edifícios sólidos em zonas altas
+• Evite sótãos - fique no andar térreo de edifícios altos
+• Mantenha-se longe de linhas eléctricas
+• Se estiver na estrada, procure abrigo seguro`;
+        } else if (temp > 35) {
+            return `🔥 Com calor extremo (${temp}°C), ZONAS FRESCAS:
+• Edifícios com ar condicionado
+• Hospitais sempre refrigerados
+• Centros comerciais
+• Locais com sombra e ventilação`;
+        } else if (condition.toLowerCase().includes('vento')) {
+            return `💨 Com vento forte, ESTRUTURAS SÓLIDAS:
+• Edifícios de betão em zonas baixas
+• Evite estruturas temporárias
+• Mantenha-se longe de árvores grandes`;
+        } else {
+            return `✅ Condições estáveis - bom momento para:
+• Revisar o teu plano de evacuação
+• Verificar o kit de emergência
+• Conhecer melhor os pontos seguros da tua área
+• Memorizar contactos de emergência`;
+        }
+    }
+
+    async generateSafeZonesOptions(weatherData, userContext = {}) {
+        try {
+            if (!this.token) {
+                return this.getBasicSafeZonesOptions(weatherData);
+            }
+
+            const prompt = this.buildSafeZonesOptionsPrompt(weatherData, userContext);
+            const response = await this.callOpenAI(prompt, 0.8);
+
+            try {
+                const options = JSON.parse(response);
+                return {
+                    success: true,
+                    options: options,
+                    method: 'ai_powered'
+                };
+            } catch (parseError) {
+                console.error('❌ Parse error safe zones options:', parseError.message);
+                return this.getBasicSafeZonesOptions(weatherData);
+            }
+
+        } catch (error) {
+            console.error('❌ Erro AI safe zones options:', error.message);
+            return this.getBasicSafeZonesOptions(weatherData);
+        }
+    }
+
+    buildSafeZonesOptionsPrompt(weatherData, userContext) {
+        const city = weatherData.city.toLowerCase();
+        const condition = weatherData.description;
+
+        return `Gerar opções de lista interativa sobre zonas seguras em ${city} com condições ${condition}.
+
+Criar exactamente 5 opções específicas e úteis para a situação actual.
+
+IMPORTANTE - LIMITES OBRIGATÓRIOS:
+- title: máximo 24 caracteres (incluindo emojis)
+- description: máximo 72 caracteres
+- id: sem espaços, usar underscore
+
+Responde só JSON no formato:
+[
+  {
+    "id": "identificador_unico",
+    "title": "Título Curto (max 24)",
+    "description": "Descrição útil (max 72 chars)"
+  }
+]
+
+Exemplo baseado na cidade e condições:
+- "Centros Evacuação" (16 chars) - "Locais oficiais mais próximos" (30 chars)
+- "Hospitais 24h" (13 chars) - "Sempre abertos para emergências" (32 chars)
+- "Rotas Seguras" (13 chars) - "Como chegar aos pontos seguros" (30 chars)
+- "Kit Emergência" (14 chars) - "O que levar numa evacuação" (26 chars)
+- "Contactos SOS" (13 chars) - "Números essenciais sempre à mão" (32 chars)`;
+    }
+
+    getBasicSafeZonesOptions(weatherData) {
+        return {
+            success: true,
+            options: [
+                { id: 'centros_evacuacao', title: 'Centros Evacuação', description: 'Locais oficiais de refúgio na área' }, // 16 chars, 35 chars
+                { id: 'hospitais_24h', title: 'Hospitais 24h', description: 'Assistência médica sempre disponível' }, // 13 chars, 37 chars
+                { id: 'rotas_evacuacao', title: 'Rotas Evacuação', description: 'Caminhos seguros para sair da área' }, // 15 chars, 34 chars
+                { id: 'kit_emergencia', title: 'Kit Emergência', description: 'Lista essencial para situações críticas' }, // 14 chars, 39 chars
+                { id: 'contactos_sos', title: 'Contactos SOS', description: 'Números de emergência importantes' } // 13 chars, 33 chars
+            ],
+            method: 'fallback'
+        };
+    }
+
+    generateBasicSafeZonesInformation(weatherData) {
+        const city = weatherData.city;
+        const temp = parseInt(weatherData.temperature);
+        const condition = weatherData.description;
+
+        return {
+            success: true,
+            message: `🛡️ **Zonas Seguras em ${city}**
+
+🌦️ **Condições atuais:** ${temp}°C, ${condition}
+
+✅ **Locais seguros para refúgio:**
+• Hospitais e centros de saúde
+• Escolas em zonas altas e seguras
+• Edifícios públicos sólidos
+• Centros comunitários
+• Igrejas em locais elevados
+
+📱 **Contactos de emergência:**
+• INGC (Gestão de Calamidades): 119
+• Bombeiros: 198
+• Polícia: 119
+
+💡 **Dica:** Mantenha sempre um kit de emergência preparado e conheça as rotas de evacuação da sua área!`,
+            method: 'fallback'
+        };
+    }
+
+    // ===============================================
+    // FUNÇÕES ESPECÍFICAS PARA TIPOS DE ZONAS SEGURAS
+    // ===============================================
+
+    async generateEvacuationCentersInfo(weatherData, userContext = {}) {
+        try {
+            if (!this.token) {
+                return this.generateBasicEvacuationCentersInfo(weatherData);
+            }
+
+            const prompt = this.buildEvacuationCentersPrompt(weatherData, userContext);
+            const response = await this.callOpenAI(prompt, 0.7);
+
+            return {
+                success: true,
+                message: response.trim(),
+                method: 'ai_powered'
+            };
+
+        } catch (error) {
+            console.error('❌ Erro AI evacuation centers:', error.message);
+            return this.generateBasicEvacuationCentersInfo(weatherData);
+        }
+    }
+
+    buildEvacuationCentersPrompt(weatherData, userContext) {
+        const city = weatherData.city.toLowerCase();
+        const condition = weatherData.description;
+
+        return `O utilizador quer informações específicas sobre centros de evacuação oficiais em ${city}. Com condições ${condition}, dar informação prática e tranquilizadora.
+
+FOCAR EM:
+- Locais oficiais designados pelo INGC
+- Endereços específicos quando possível
+- Capacidade e facilidades disponíveis
+- Como chegar aos centros
+- O que levar/esperar
+
+${city === 'beira' ? `Para BEIRA, incluir centros conhecidos como:
+- Centro Comunitário da Manga
+- Escola Secundária Samora Machel
+- Estádio do Ferroviário
+- Centro de Saúde do Macúti` : 'Para outras cidades, focar em tipos de locais padrão'}
+
+Responder de forma natural e reconfortante, máximo 400 palavras:`;
+    }
+
+    async generateEmergencyHospitalsInfo(weatherData, userContext = {}) {
+        try {
+            if (!this.token) {
+                return this.generateBasicEmergencyHospitalsInfo(weatherData);
+            }
+
+            const prompt = this.buildEmergencyHospitalsPrompt(weatherData, userContext);
+            const response = await this.callOpenAI(prompt, 0.7);
+
+            return {
+                success: true,
+                message: response.trim(),
+                method: 'ai_powered'
+            };
+
+        } catch (error) {
+            console.error('❌ Erro AI emergency hospitals:', error.message);
+            return this.generateBasicEmergencyHospitalsInfo(weatherData);
+        }
+    }
+
+    buildEmergencyHospitalsPrompt(weatherData, userContext) {
+        const city = weatherData.city.toLowerCase();
+        const condition = weatherData.description;
+
+        return `O utilizador quer informações sobre hospitais de emergência 24h em ${city}. Com condições ${condition}, dar informação útil sobre cuidados médicos.
+
+INCLUIR:
+- Hospitais principais que funcionam 24h
+- Contactos telefónicos
+- Especialidades em emergências climáticas
+- Centros de saúde alternativos
+- Como chegar durante emergências
+
+${city === 'beira' ? `Para BEIRA, incluir:
+- Hospital Central da Beira
+- Hospital Privado Beira Medical Centre
+- Centros de Saúde do Macúti, Manga, Goto` : 'Para outras cidades, incluir hospitais centrais e centros principais'}
+
+Responder de forma tranquilizadora e informativa, máximo 400 palavras:`;
+    }
+
+    async generateEvacuationRoutesInfo(weatherData, userContext = {}) {
+        try {
+            if (!this.token) {
+                return this.generateBasicEvacuationRoutesInfo(weatherData);
+            }
+
+            const prompt = this.buildEvacuationRoutesPrompt(weatherData, userContext);
+            const response = await this.callOpenAI(prompt, 0.7);
+
+            return {
+                success: true,
+                message: response.trim(),
+                method: 'ai_powered'
+            };
+
+        } catch (error) {
+            console.error('❌ Erro AI evacuation routes:', error.message);
+            return this.generateBasicEvacuationRoutesInfo(weatherData);
+        }
+    }
+
+    buildEvacuationRoutesPrompt(weatherData, userContext) {
+        const city = weatherData.city.toLowerCase();
+        const condition = weatherData.description;
+
+        return `O utilizador quer informações sobre rotas de evacuação seguras em ${city}. Com condições ${condition}, dar orientações práticas de deslocação.
+
+INCLUIR:
+- Estradas principais pavimentadas
+- Rotas que evitam zonas baixas
+- Pontos de encontro familiares
+- Alternativas se estradas bloqueadas
+- Transportes durante emergências
+
+${city === 'beira' ? `Para BEIRA, mencionar:
+- EN6 (estrada principal)
+- Ponte sobre rio Púngoè
+- Rotas para zonas altas como Manga, Goto
+- Evitar Macúti durante marés altas` : 'Para outras cidades, focar em estradas principais e zonas elevadas'}
+
+Dar conselhos práticos como moçambicano experiente, máximo 400 palavras:`;
+    }
+
+    generateBasicEvacuationCentersInfo(weatherData) {
+        const city = weatherData.city;
+        return {
+            success: true,
+            message: `🏛️ **Centros de Evacuação em ${city}**
+
+✅ **Locais oficiais de refúgio:**
+• Escolas secundárias em zonas altas
+• Centros comunitários principais
+• Edifícios públicos sólidos
+• Igrejas em locais elevados
+• Estádios municipais
+
+📍 **Como proceder:**
+• Siga instruções das autoridades
+• Leve kit de emergência básico
+• Mantenha-se em grupo
+• Registe presença no local
+
+📞 **Contacto INGC: 119**
+
+💡 **Dica:** Conheça previamente os centros mais próximos da sua área!`,
+            method: 'fallback'
+        };
+    }
+
+    generateBasicEmergencyHospitalsInfo(weatherData) {
+        const city = weatherData.city;
+        return {
+            success: true,
+            message: `🏥 **Hospitais de Emergência em ${city}**
+
+🚨 **Sempre disponíveis 24h:**
+• Hospital Central/Provincial
+• Centros de Saúde principais
+• Clínicas privadas com urgência
+
+📞 **Emergência Médica: 119**
+
+⚡ **Durante emergências climáticas:**
+• Hospitais mantêm geradores
+• Equipas de resgate médico ativas
+• Primeiros socorros básicos
+
+💡 **Leve sempre:** BI, cartão de saúde, medicamentos pessoais`,
+            method: 'fallback'
+        };
+    }
+
+    generateBasicEvacuationRoutesInfo(weatherData) {
+        const city = weatherData.city;
+        return {
+            success: true,
+            message: `🛣️ **Rotas de Evacuação em ${city}**
+
+✅ **Regras básicas:**
+• Use estradas principais pavimentadas
+• Evite zonas baixas e próximas a rios
+• Dirija-se para terrenos elevados
+• Mantenha-se em grupo
+
+⚠️ **Durante emergências:**
+• Siga instruções das autoridades
+• Tenha rotas alternativas
+• Combustível sempre acima de meio tanque
+• Mapas físicos como backup
+
+📞 **Emergência: 119**`,
+            method: 'fallback'
+        };
+    }
+
+    // ===============================================
+    // ANÁLISE DE ALERTAS METEOROLÓGICOS DE PERIGO
+    // ===============================================
+
+    async generateWeatherAlertsAnalysis(weatherData, userContext = {}) {
+        try {
+            if (!this.token) {
+                return this.generateBasicWeatherAlertsAnalysis(weatherData);
+            }
+
+            const prompt = this.buildWeatherAlertsPrompt(weatherData, userContext);
+            const response = await this.callOpenAI(prompt, 0.7);
+
+            // Tentar fazer parse como JSON estruturado
+            try {
+                const alertsData = JSON.parse(response);
+                return {
+                    success: true,
+                    message: alertsData.message || response.trim(),
+                    hasActiveAlerts: alertsData.hasActiveAlerts || false,
+                    alertLevel: alertsData.alertLevel || 'none',
+                    alertTypes: alertsData.alertTypes || [],
+                    method: 'ai_powered'
+                };
+            } catch (parseError) {
+                // Se não for JSON, usar como mensagem simples
+                return {
+                    success: true,
+                    message: response.trim(),
+                    hasActiveAlerts: this.detectAlertsInText(response, weatherData),
+                    alertLevel: this.calculateAlertLevel(weatherData),
+                    method: 'ai_powered_text'
+                };
+            }
+
+        } catch (error) {
+            console.error('❌ Erro AI weather alerts:', error.message);
+            return this.generateBasicWeatherAlertsAnalysis(weatherData);
+        }
+    }
+
+    buildWeatherAlertsPrompt(weatherData, userContext) {
+        const temp = parseInt(weatherData.temperature);
+        const city = weatherData.city.toLowerCase();
+        const condition = weatherData.description;
+        const humidity = weatherData.humidity || 'N/A';
+        const windSpeed = weatherData.windSpeed || 'N/A';
+
+        return `Analisar condições meteorológicas atuais em ${city} para detectar alertas de perigo.
+
+DADOS METEOROLÓGICOS ATUAIS:
+• Temperatura: ${temp}°C
+• Condição: ${condition}
+• Humidade: ${humidity}%
+• Vento: ${windSpeed} km/h
+
+ANÁLISE DE PERIGOS:
+
+🌡️ TEMPERATURA:
+- Acima de 35°C: Alerta de calor extremo
+- Abaixo de 15°C: Alerta de frio extremo
+- Entre 32-35°C: Atenção calor intenso
+- Entre 15-18°C: Atenção frio moderado
+
+🌧️ CONDIÇÕES CLIMÁTICAS:
+- Chuva intensa/tempestade: Alerta inundação
+- Vento forte: Alerta estrutural
+- Névoa densa: Alerta visibilidade
+- Seca prolongada: Alerta incêndio
+
+💧 HUMIDADE:
+- Acima de 85%: Desconforto térmico
+- Abaixo de 30%: Alerta ressecamento
+
+RESPONDER EM JSON:
+{
+  "message": "Análise completa em português moçambicano natural (max 400 palavras)",
+  "hasActiveAlerts": true/false,
+  "alertLevel": "none/low/medium/high/critical",
+  "alertTypes": ["tipo1", "tipo2"],
+  "recommendations": ["ação1", "ação2"]
+}
+
+Dar avaliação honest e tranquilizadora como especialista moçambicano em meteorologia.`;
+    }
+
+    detectAlertsInText(text, weatherData) {
+        const alertKeywords = ['alerta', 'perigo', 'cuidado', 'atenção', 'evite', 'risco'];
+        const lowerText = text.toLowerCase();
+        return alertKeywords.some(keyword => lowerText.includes(keyword));
+    }
+
+    calculateAlertLevel(weatherData) {
+        const temp = parseInt(weatherData.temperature);
+        const condition = weatherData.description.toLowerCase();
+
+        if (temp >= 35 || temp <= 15) return 'high';
+        if (condition.includes('tempestade') || condition.includes('ciclone')) return 'critical';
+        if (temp >= 32 || temp <= 18) return 'medium';
+        if (condition.includes('chuva forte') || condition.includes('vento')) return 'medium';
+        if (temp >= 30 || temp <= 20) return 'low';
+
+        return 'none';
+    }
+
+    async generateAlertActionOptions(weatherData, alertsAnalysis, userContext = {}) {
+        try {
+            if (!this.token) {
+                return this.getBasicAlertActionOptions(weatherData, alertsAnalysis);
+            }
+
+            const prompt = this.buildAlertActionOptionsPrompt(weatherData, alertsAnalysis, userContext);
+            const response = await this.callOpenAI(prompt, 0.8);
+
+            try {
+                const options = JSON.parse(response);
+                return {
+                    success: true,
+                    options: options,
+                    method: 'ai_powered'
+                };
+            } catch (parseError) {
+                console.error('❌ Parse error alert options:', parseError.message);
+                return this.getBasicAlertActionOptions(weatherData, alertsAnalysis);
+            }
+
+        } catch (error) {
+            console.error('❌ Erro AI alert options:', error.message);
+            return this.getBasicAlertActionOptions(weatherData, alertsAnalysis);
+        }
+    }
+
+    buildAlertActionOptionsPrompt(weatherData, alertsAnalysis, userContext) {
+        const temp = parseInt(weatherData.temperature);
+        const condition = weatherData.description;
+        const alertLevel = alertsAnalysis.alertLevel;
+
+        return `Gerar opções de ação para alertas meteorológicos com nível ${alertLevel}.
+
+CONDIÇÕES: ${temp}°C, ${condition}
+ALERTAS ATIVOS: ${alertsAnalysis.hasActiveAlerts ? 'SIM' : 'NÃO'}
+
+Criar exactamente 5 opções específicas para a situação.
+
+LIMITES OBRIGATÓRIOS:
+- title: máximo 24 caracteres
+- description: máximo 72 caracteres
+- id: sem espaços, usar underscore
+
+Responde só JSON:
+[
+  {
+    "id": "identificador_unico",
+    "title": "Título (max 24)",
+    "description": "Descrição (max 72)"
+  }
+]
+
+Focar em ações práticas baseadas no tipo de alerta detectado.`;
+    }
+
+    getBasicAlertActionOptions(weatherData, alertsAnalysis) {
+        const temp = parseInt(weatherData.temperature);
+        const alertLevel = alertsAnalysis.alertLevel;
+
+        if (alertLevel === 'high' || alertLevel === 'critical') {
+            return {
+                success: true,
+                options: [
+                    { id: 'medidas_urgentes', title: 'Medidas Urgentes', description: 'Ações imediatas para se proteger' },
+                    { id: 'locais_seguros', title: 'Locais Seguros', description: 'Onde se refugiar agora' },
+                    { id: 'contactos_sos', title: 'Contactos SOS', description: 'Números de emergência' },
+                    { id: 'kit_sobrevivencia', title: 'Kit Sobrevivência', description: 'Itens essenciais' },
+                    { id: 'monitorar_situacao', title: 'Monitorar Situação', description: 'Como acompanhar evolução' }
+                ],
+                method: 'fallback'
+            };
+        } else {
+            return {
+                success: true,
+                options: [
+                    { id: 'precaucoes_basicas', title: 'Precauções Básicas', description: 'Cuidados preventivos' },
+                    { id: 'monitoramento', title: 'Monitoramento', description: 'Acompanhar condições' },
+                    { id: 'preparacao', title: 'Preparação', description: 'Como se preparar' },
+                    { id: 'dicas_conforto', title: 'Dicas Conforto', description: 'Manter-se confortável' },
+                    { id: 'proximos_dias', title: 'Próximos Dias', description: 'Previsão e tendências' }
+                ],
+                method: 'fallback'
+            };
+        }
+    }
+
+    generateBasicWeatherAlertsAnalysis(weatherData) {
+        const temp = parseInt(weatherData.temperature);
+        const city = weatherData.city;
+        const condition = weatherData.description;
+        const humidity = weatherData.humidity || 'N/A';
+
+        let alertLevel = 'none';
+        let alertTypes = [];
+        let message = `🚨 **ANÁLISE DE ALERTAS - ${city}**\n\n`;
+
+        message += `🌡️ **Condições Atuais:**\n`;
+        message += `• Temperatura: ${temp}°C\n`;
+        message += `• Estado: ${condition}\n`;
+        message += `• Humidade: ${humidity}%\n\n`;
+
+        // Análise de temperatura
+        if (temp >= 35) {
+            alertLevel = 'high';
+            alertTypes.push('calor_extremo');
+            message += `🔥 **ALERTA CALOR EXTREMO**\n`;
+            message += `• Temperatura perigosa (${temp}°C)\n`;
+            message += `• Risco de desidratação e insolação\n`;
+            message += `• Evite exposição solar 10h-16h\n`;
+            message += `• Beba água constantemente\n\n`;
+        } else if (temp >= 32) {
+            alertLevel = 'medium';
+            alertTypes.push('calor_intenso');
+            message += `🌡️ **ATENÇÃO CALOR INTENSO**\n`;
+            message += `• Temperatura elevada (${temp}°C)\n`;
+            message += `• Mantenha-se hidratado\n`;
+            message += `• Procure sombra e locais frescos\n\n`;
+        } else if (temp <= 15) {
+            alertLevel = 'high';
+            alertTypes.push('frio_extremo');
+            message += `🧊 **ALERTA FRIO EXTREMO**\n`;
+            message += `• Temperatura muito baixa (${temp}°C)\n`;
+            message += `• Risco de hipotermia\n`;
+            message += `• Vista roupas quentes em camadas\n`;
+            message += `• Mantenha-se aquecido e seco\n\n`;
+        } else if (temp <= 18) {
+            alertLevel = 'medium';
+            alertTypes.push('frio_moderado');
+            message += `❄️ **ATENÇÃO FRIO MODERADO**\n`;
+            message += `• Temperatura baixa (${temp}°C)\n`;
+            message += `• Vista roupas adequadas\n`;
+            message += `• Cuidado com crianças e idosos\n\n`;
+        }
+
+        // Análise de condições climáticas
+        if (condition.toLowerCase().includes('tempestade')) {
+            alertLevel = 'critical';
+            alertTypes.push('tempestade');
+            message += `⛈️ **ALERTA CRÍTICO - TEMPESTADE**\n`;
+            message += `• Condições meteorológicas perigosas\n`;
+            message += `• Evite sair de casa\n`;
+            message += `• Mantenha-se longe de janelas\n`;
+            message += `• Desligue aparelhos elétricos\n\n`;
+        } else if (condition.toLowerCase().includes('chuva')) {
+            if (alertLevel === 'none') alertLevel = 'medium';
+            alertTypes.push('chuva');
+            message += `🌧️ **ATENÇÃO CHUVA**\n`;
+            message += `• Cuidado com alagamentos\n`;
+            message += `• Evite zonas baixas\n`;
+            message += `• Dirija com cuidado\n\n`;
+        }
+
+        if (alertLevel === 'none') {
+            message += `✅ **CONDIÇÕES ESTÁVEIS**\n`;
+            message += `• Não há alertas meteorológicos ativos\n`;
+            message += `• Condições normais para atividades\n`;
+            message += `• Mantenha-se atento a mudanças\n\n`;
+        }
+
+        message += `📱 **Emergências:** 119 (INGC)\n`;
+        message += `💡 **Dica:** Acompanhe regularmente as condições meteorológicas!`;
+
+        return {
+            success: true,
+            message: message,
+            hasActiveAlerts: alertLevel !== 'none',
+            alertLevel: alertLevel,
+            alertTypes: alertTypes,
+            method: 'fallback'
+        };
+    }
+
+    // ===============================================
     // SUGESTÕES BASEADAS NA TEMPERATURA ATUAL
     // ===============================================
 
@@ -1338,8 +2043,11 @@ Responde só: ["sugestão1", "sugestão2", "sugestão3"]`;
             intent = 'weather_tips';
             confidence = 0.8;
         } else if (lowerMessage.includes('zona') && (lowerMessage.includes('risco') || lowerMessage.includes('perigosa')) ||
-                   lowerMessage.includes('segurança') || lowerMessage.includes('inundação') || lowerMessage.includes('ciclone')) {
+            lowerMessage.includes('segurança') || lowerMessage.includes('inundação') || lowerMessage.includes('ciclone')) {
             intent = 'safety_zones';
+            confidence = 0.9;
+        } else if (lowerMessage.includes('alerta') || lowerMessage.includes('/alertas') || lowerMessage.includes('perigo')) {
+            intent = 'weather_alerts';
             confidence = 0.9;
         } else if (lowerMessage.includes('amanhã') || lowerMessage.includes('previsão')) {
             intent = 'weather_query_forecast';
