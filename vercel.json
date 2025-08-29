@@ -9,27 +9,10 @@
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "/index.js"
-    },
-    {
-      "src": "/admin$",
-      "dest": "/index.js"
-    },
-    {
-      "src": "/admin/(.*)",
-      "dest": "/index.js"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/index.js"
+      "dest": "index.js"
     }
   ],
   "env": {
     "NODE_ENV": "production"
-  },
-  "functions": {
-    "index.js": {
-      "maxDuration": 30
-    }
   }
 }
