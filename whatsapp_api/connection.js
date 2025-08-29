@@ -825,6 +825,270 @@ class WhatsAppApi {
         return await this.enviarMensagemInterativaUsandoWhatsappAPI(configMenu);
     }
 
+    // **NOVO** - Lista de opções de interesse após sugestões
+    async enviarListaInteresseAposSugestoes(numeroCelular, weatherData) {
+        const temp = parseInt(weatherData.temperature);
+        const city = weatherData.city;
+
+        // Gerar opções baseadas no clima atual
+        let opcoes = [];
+
+        // Opções sempre disponíveis
+        opcoes.push(
+            {
+                id: "previsao_7_dias",
+                title: "📅 Previsão 7 Dias",
+                description: `Como será o tempo em ${city} na próxima semana`
+            },
+            {
+                id: "conselhos_roupa",
+                title: "👕 Que Roupa Vestir",
+                description: `Dicas de vestuário para ${temp}°C`
+            },
+            {
+                id: "atividades_clima",
+                title: "🎯 Atividades Ideais",
+                description: `O que fazer com este tempo em ${city}`
+            }
+        );
+
+        // Opções específicas baseadas na temperatura
+        if (temp > 30) {
+            opcoes.push({
+                id: "dicas_calor",
+                title: "🌞 Dicas para o Calor",
+                description: "Como se refrescar e se proteger"
+            });
+        } else if (temp < 20) {
+            opcoes.push({
+                id: "dicas_frio",
+                title: "🧥 Dicas para o Frio",
+                description: "Como se aquecer e se proteger"
+            });
+        }
+
+        if (weatherData.condition && weatherData.condition.includes('chuva')) {
+            opcoes.push({
+                id: "dicas_chuva",
+                title: "☔ Dicas para Chuva",
+                description: "Como se preparar para a chuva"
+            });
+        }
+
+        // Sempre adicionar algumas opções educativas
+        opcoes.push(
+            {
+                id: "explicar_meteorologia",
+                title: "🌡️ Como Funciona o Clima",
+                description: "Aprende sobre meteorologia"
+            },
+            {
+                id: "alertas_clima",
+                title: "🚨 Alertas Meteorológicos",
+                description: "Configurar notificações automáticas"
+            }
+        );
+
+        // Limitar a 8 opções máximo
+        opcoes = opcoes.slice(0, 8);
+
+        const sections = [
+            {
+                title: "💡 O que te interessa?",
+                rows: opcoes
+            }
+        ];
+
+        const interestMenu = {
+            messaging_product: 'whatsapp',
+            recipient_type: "individual",
+            to: numeroCelular,
+            type: "interactive",
+            interactive: {
+                type: "list",
+                header: {
+                    type: "text",
+                    text: "🤔 O que te interessa?"
+                },
+                body: {
+                    text: `Eh pá, baseado no tempo atual em ${city} (${temp}°C), aqui tens algumas coisas interessantes que podes descobrir:`
+                },
+                footer: {
+                    text: "Joana Bot - Sempre aqui para ajudar! 🌤️"
+                },
+                action: {
+                    button: "Ver Opções",
+                    sections: sections
+                }
+            }
+        };
+
+        return await this.enviarMensagemInterativaUsandoWhatsappAPI(interestMenu);
+    }
+
+    // **NOVO** - Lista de conselhos personalizados gerados por AI
+    async enviarListaConselhosPersonalizados(numeroCelular, adviceOptions, weatherData) {
+        if (!adviceOptions || adviceOptions.length === 0) {
+            console.log('⚠️ Nenhuma opção de conselho disponível');
+            return;
+        }
+
+        const temp = parseInt(weatherData.temperature);
+        const city = weatherData.city;
+
+        // Limitar opções e garantir formato correto
+        const formattedOptions = adviceOptions.slice(0, 8).map(option => ({
+            id: option.id || `conselho_${Date.now()}`,
+            title: option.title.length > 24 ? option.title.substring(0, 21) + '...' : option.title,
+            description: option.description.length > 72 ? option.description.substring(0, 69) + '...' : option.description
+        }));
+
+        const sections = [
+            {
+                title: "💡 Mais conselhos úteis",
+                rows: formattedOptions
+            }
+        ];
+
+        const adviceMenu = {
+            messaging_product: 'whatsapp',
+            recipient_type: "individual",
+            to: numeroCelular,
+            type: "interactive",
+            interactive: {
+                type: "list",
+                header: {
+                    type: "text",
+                    text: "🤔 Outros conselhos?"
+                },
+                body: {
+                    text: `Eh pá, com ${temp}°C em ${city}, aqui tens mais alguns conselhos que podem ser úteis:`
+                },
+                footer: {
+                    text: "Joana Bot - Sempre com bons conselhos! 💡"
+                },
+                action: {
+                    button: "Ver Conselhos",
+                    sections: sections
+                }
+            }
+        };
+
+        return await this.enviarMensagemInterativaUsandoWhatsappAPI(adviceMenu);
+    }
+
+    // **NOVO** - Lista de zonas seguras e pontos de refúgio
+    async enviarListaZonasSeguras(numeroCelular, opcoes, weatherData) {
+        if (!opcoes || opcoes.length === 0) {
+            return await this.enviarMensagemUsandoWhatsappAPI(
+                "❌ Não foi possível carregar informações das zonas seguras. Tente mais tarde.",
+                numeroCelular
+            );
+        }
+
+        const sections = [
+            {
+                title: "🛡️ Zonas Seguras", // Reduzido para 16 caracteres
+                rows: opcoes.slice(0, 10).map((opcao, index) => ({
+                    id: opcao.id || `safe_zone_${index}`,
+                    title: opcao.title.length > 24 ? opcao.title.substring(0, 21) + '...' : opcao.title,
+                    description: opcao.description.length > 72 ? opcao.description.substring(0, 69) + '...' : opcao.description
+                }))
+            }
+        ];
+
+        const city = weatherData.city;
+        const condition = weatherData.description;
+        const temp = parseInt(weatherData.temperature);
+
+        const safeZonesMenu = {
+            messaging_product: 'whatsapp',
+            recipient_type: "individual",
+            to: numeroCelular,
+            type: "interactive",
+            interactive: {
+                type: "list",
+                header: {
+                    type: "text",
+                    text: "🛡️ Zonas Seguras"
+                },
+                body: {
+                    text: `🏙️ *${city}* - ${temp}°C, ${condition}\n\nEscolha uma categoria para informações específicas sobre locais seguros e pontos de refúgio durante emergências climáticas:`
+                },
+                footer: {
+                    text: "🚨 Emergência: 119 (INGC)"
+                },
+                action: {
+                    button: "Ver Opções",
+                    sections: sections
+                }
+            }
+        };
+
+        return await this.enviarMensagemInterativaUsandoWhatsappAPI(safeZonesMenu);
+    }
+
+    // **NOVO** - Lista de alertas meteorológicos e ações
+    async enviarListaAlertasMeteorologicos(numeroCelular, opcoes, weatherData, alertsAnalysis) {
+        if (!opcoes || opcoes.length === 0) {
+            return await this.enviarMensagemUsandoWhatsappAPI(
+                "❌ Não foi possível carregar ações para os alertas. Mantenha-se atento às condições.",
+                numeroCelular
+            );
+        }
+
+        const sections = [
+            {
+                title: "🚨 Ações Alertas", // 15 chars - dentro do limite
+                rows: opcoes.slice(0, 10).map((opcao, index) => ({
+                    id: opcao.id || `alert_action_${index}`,
+                    title: opcao.title.length > 24 ? opcao.title.substring(0, 21) + '...' : opcao.title,
+                    description: opcao.description.length > 72 ? opcao.description.substring(0, 69) + '...' : opcao.description
+                }))
+            }
+        ];
+
+        const city = weatherData.city;
+        const condition = weatherData.description;
+        const temp = parseInt(weatherData.temperature);
+        const alertLevel = alertsAnalysis.alertLevel || 'none';
+
+        // Emoji baseado no nível de alerta
+        const alertEmoji = {
+            'critical': '🔴',
+            'high': '🟠',
+            'medium': '🟡',
+            'low': '🟢',
+            'none': '✅'
+        };
+
+        const alertsMenu = {
+            messaging_product: 'whatsapp',
+            recipient_type: "individual",
+            to: numeroCelular,
+            type: "interactive",
+            interactive: {
+                type: "list",
+                header: {
+                    type: "text",
+                    text: "🚨 Alertas Meteorológicos"
+                },
+                body: {
+                    text: `${alertEmoji[alertLevel]} *${city}* - ${temp}°C, ${condition}\n\nNível: ${alertLevel.toUpperCase()}\n\nEscolha uma ação baseada nos alertas meteorológicos detectados:`
+                },
+                footer: {
+                    text: "🆘 Emergência: 119 (INGC)"
+                },
+                action: {
+                    button: "Ver Ações",
+                    sections: sections
+                }
+            }
+        };
+
+        return await this.enviarMensagemInterativaUsandoWhatsappAPI(alertsMenu);
+    }
+
     // **UTILITÁRIOS AUXILIARES**
 
     getContextualDescription(sugestao, contexto) {

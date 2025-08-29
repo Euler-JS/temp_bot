@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS users (
         "interests": []
     }'::jsonb,
     weather_history JSONB DEFAULT '[]'::jsonb,
+    last_command VARCHAR(50),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     last_access TIMESTAMPTZ DEFAULT NOW()
 );
