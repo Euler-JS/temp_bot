@@ -2092,28 +2092,24 @@ async function handleForecastRequest(phoneNumber, days = 7) {
   try {
     console.log(`📅 Solicitação de previsão de ${days} dias para ${phoneNumber}`);
 
-    const user = await getUserByPhone(phoneNumber);
+    const user = await getUserByContact(phoneNumber);
     const city = user?.preferred_city || user?.last_city || 'Maputo';
 
     await whatsappApi.enviarMensagemCarregamento(phoneNumber, `🔍 Eh pá, deixa ver a previsão de ${days} dias para ${city}...`);
 
-    const forecastData = await weatherService.getForecast(city, days);
+    const forecastData = await weatherService.getWeatherForecast(city, days);
 
     if (forecastData && forecastData.length > 0) {
       let forecastMessage = `📅 *Previsão de ${days} dias para ${city}*\n\n`;
 
       forecastData.slice(0, days).forEach((day, index) => {
         const emoji = getWeatherEmoji(day.description);
-        const date = new Date();
-        date.setDate(date.getDate() + index);
+        const date = new Date(day.date);
         const dayName = index === 0 ? 'Hoje' : index === 1 ? 'Amanhã' : date.toLocaleDateString('pt-MZ', { weekday: 'long' });
 
         forecastMessage += `${emoji} *${dayName}*\n`;
-        forecastMessage += `   🌡️ ${day.min_temp}°C - ${day.max_temp}°C\n`;
+        forecastMessage += `   🌡️ ${day.minTemp}°C - ${day.maxTemp}°C\n`;
         forecastMessage += `   ${day.description}\n`;
-        if (day.rain_probability > 30) {
-          forecastMessage += `   ☔ ${day.rain_probability}% chance de chuva\n`;
-        }
         forecastMessage += `\n`;
       });
 
@@ -2136,7 +2132,7 @@ async function handleClothingAdviceRequest(phoneNumber) {
   try {
     console.log(`👕 Solicitação de conselhos de roupa para ${phoneNumber}`);
 
-    const user = await getUserByPhone(phoneNumber);
+    const user = await getUserByContact(phoneNumber);
     const city = user?.preferred_city || user?.last_city || 'Maputo';
 
     await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Eh pá, deixa ver que roupa é melhor para hoje...');
@@ -2194,7 +2190,7 @@ async function handleActivitySuggestionsRequest(phoneNumber) {
   try {
     console.log(`🎯 Solicitação de atividades ideais para ${phoneNumber}`);
 
-    const user = await getUserByPhone(phoneNumber);
+    const user = await getUserByContact(phoneNumber);
     const userContext = {
       preferredCity: user?.preferred_city || user?.last_city,
       expertiseLevel: user?.expertise_level || 'basic'
