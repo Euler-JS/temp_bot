@@ -8,14 +8,14 @@ class OPENAI {
         this.baseURL = 'https://api.openai.com/v1';
         this.model = 'gpt-3.5-turbo';
         this.maxTokens = 300;
-        
+
         // Inicializar handler de sugestões 100% AI
         this.suggestionsHandler = new AIBasedSuggestionsHandler(this.token);
-        
+
         // Cache para análises frequentes
         this.analysisCache = new Map();
         this.cacheExpiry = 1800000; // 30 minutos
-        
+
         if (!this.token) {
             console.warn('⚠️ Token OpenAI não encontrado - modo limitado');
         } else {
@@ -40,10 +40,10 @@ class OPENAI {
 
             // Análise completa com AI
             const analysis = await this.performAIAnalysis(message, context);
-            
+
             // Cache do resultado
             this.setCachedAnalysis(cacheKey, analysis);
-            
+
             return analysis;
 
         } catch (error) {
@@ -58,11 +58,11 @@ class OPENAI {
         }
 
         const prompt = this.buildAnalysisPrompt(message, context);
-        
+
         try {
             const response = await this.callOpenAI(prompt, 0.3);
             const analysis = JSON.parse(response);
-            
+
             return {
                 success: true,
                 analysis: analysis,
@@ -77,60 +77,42 @@ class OPENAI {
     }
 
     buildAnalysisPrompt(message, context) {
-        return `
-SISTEMA: Assistente meteorológico AI para Moçambique
+        return `Eh pá, sou um assistente que entende bem como os moçambicanos falam sobre o tempo.
 
-MENSAGEM USUÁRIO: "${message}"
+A pessoa escreveu: "${message}"
 
-CONTEXTO:
-- Consultas anteriores: ${context.queryCount || 0}
-- Última cidade: ${context.lastCity || 'primeira consulta'}
-- Dados meteorológicos: ${context.hasWeatherData ? 'disponíveis' : 'não disponíveis'}
-- Localização: ${context.currentLocation || 'não especificada'}
+Contexto da conversa:
+- Já fizeram ${context.queryCount || 0} perguntas antes
+- Última cidade que mencionaram: ${context.lastCity || 'nenhuma ainda'}
+- Onde estão agora: ${context.currentLocation || 'não sei'}
 
-TAREFA: Determinar a intenção e categoria da mensagem
+Preciso perceber o que eles realmente querem. Os moçambicanos falam de várias maneiras:
 
-CATEGORIAS DISPONÍVEIS:
-1. **weather_query_current** - Consulta tempo atual em uma cidade
-2. **weather_query_forecast** - Previsão meteorológica
-3. **activity_recommendation** - Recomendações de atividades
-4. **clothing_advice** - Conselhos sobre vestuário
-5. **weather_tips** - Dicas meteorológicas (calor/frio/chuva)
-6. **city_comparison** - Comparar tempo entre cidades
-7. **general_help** - Pedidos de ajuda ou comandos
-8. **greeting** - Cumprimentos e conversação
-9. **suggestion_response** - Resposta a uma sugestão anterior
-10. **weather_education** - Perguntas educativas sobre meteorologia
+Se dizem coisas como "Maputo", "como está lá", "tempo hoje" → querem saber o tempo atual
+Se perguntam "amanhã", "previsão", "vai chover" → querem saber o futuro
+Se dizem "o que fazer", "há atividade", "onde ir" → querem ideias de atividades
+Se perguntam "que roupa", "como vestir" → querem conselhos de roupa
+Se falam "calor", "frio", "dicas" → querem dicas para o tempo
+Se comparam "Maputo vs Beira" → querem comparar cidades
+Se dizem "ajuda", "não entendo" → precisam de ajuda
+Se cumprimentam "olá", "bom dia" → só estão a ser simpáticos
 
-EXEMPLOS MOÇAMBICANOS:
-- "Maputo" → weather_query_current
-- "Como está o tempo em Beira" → weather_query_current
-- "Tempo amanhã" → weather_query_forecast
-- "Há alguma atividade" → activity_recommendation
-- "O que fazer hoje" → activity_recommendation
-- "Que roupa usar" → clothing_advice
-- "Dicas para calor" → weather_tips
-- "Ajuda" → general_help
-- "Olá" → greeting
+Responde só o JSON, mas pensa como um moçambicano pensaria:
 
-ANÁLISE:
-Considere linguagem moçambicana, gírias locais, e seja preciso na categorização.
-
-RESPONDA APENAS JSON:
 {
-    "intent": "categoria_principal",
-    "confidence": 0.95,
+    "intent": "o_que_eles_realmente_querem",
+    "confidence": 0.85,
     "entities": {
-        "cities": ["cidade1", "cidade2"],
-        "timeframe": "today|tomorrow|week|none",
-        "weather_aspect": "temperature|rain|humidity|general",
-        "activity_type": "outdoor|indoor|general|none"
+        "cities": ["cidades_que_mencionaram"],
+        "timeframe": "quando_querem_saber",
+        "weather_aspect": "que_aspecto_do_tempo",
+        "activity_type": "tipo_de_atividade"
     },
-    "reasoning": "explicação_clara",
-    "response_type": "informative|interactive|suggestive",
-    "priority": "high|medium|low",
+    "reasoning": "porque_penso_isso",
+    "response_type": "como_responder",
+    "priority": "urgência",
     "requires_weather_data": true,
-    "suggested_followup": "tipo_de_seguimento"
+    "suggested_followup": "o_que_sugerir_depois"
 }`;
     }
 
@@ -141,7 +123,7 @@ RESPONDA APENAS JSON:
     async generateContextualResponse(analysis, weatherData, userContext = {}) {
         try {
             console.log('🤖 Gerando resposta contextual baseada em AI');
-            
+
             // Se não há dados meteorológicos, retornar erro
             if (!weatherData || !weatherData.temperature) {
                 return {
@@ -152,10 +134,10 @@ RESPONDA APENAS JSON:
 
             // Gerar resposta contextual baseada no intent e dados
             const response = await this.generateWeatherResponse(analysis, weatherData, userContext);
-            
+
             // Gerar sugestões inteligentes
             const suggestions = await this.generateSmartSuggestions(userContext, weatherData);
-            
+
             return {
                 success: true,
                 message: response,
@@ -182,7 +164,7 @@ RESPONDA APENAS JSON:
 
             const prompt = this.buildWeatherResponsePrompt(analysis, weatherData, userContext);
             const response = await this.callOpenAI(prompt, 0.7);
-            
+
             return response.trim();
 
         } catch (error) {
@@ -192,48 +174,109 @@ RESPONDA APENAS JSON:
     }
 
     buildWeatherResponsePrompt(analysis, weatherData, userContext) {
-        return `
-SISTEMA: Assistente meteorológico moçambicano
+        const temp = parseInt(weatherData.temperature);
+        const city = weatherData.city;
+        const isActivityRequest = analysis.intent === 'ideias_de_atividades' || 
+                                 analysis.intent === 'activity_recommendation' ||
+                                 analysis.intent === 'tipo_de_atividade';
+        
+        if (city.toLowerCase() === 'beira' && isActivityRequest) {
+            return `A pessoa perguntou onde pode ir hoje em Beira. Com ${temp}°C e ${weatherData.description}, quero dar uma resposta completa e estruturada.
 
-DADOS METEOROLÓGICOS:
-- Cidade: ${weatherData.city}
-- Temperatura: ${weatherData.temperature}°C
-- Condição: ${weatherData.description}
+FORMATO IDEAL DA RESPOSTA:
+
+🗺️ *Eh pá, vou te dar umas ideias fixes de locais para ires hoje em Beira!*
+
+🌤️ *Como está o tempo:*
+• ${temp}°C - ${weatherData.description}
+• Humidade: ${weatherData.humidity}%
+
+[Depois escolher uma das categorias baseada na temperatura]:
+
+${this.getLocationCategoryForTemperature(temp, weatherData.description)}
+
+�️ *Locais específicos da Beira:*
+📍 • Macúti - zona da praia
+📍 • Manga - centro comercial
+📍 • Goto - bairro residencial
+📍 • Munhava - zona movimentada
+
+💬 *Quer saber mais sobre algum local específico?*
+Exemplo: "Como está o Macúti hoje?" ou "Restaurantes no Manga"
+
+Responde exatamente neste formato, adaptando só a parte da temperatura:`;
+        } else {
+            return `Eh pá, vou te ajudar com informações fixes sobre ${city}!
+
+PERGUNTA: ${analysis.intent}
+TEMPO ATUAL em ${city}:
+- ${temp}°C (${temp > 30 ? 'bem quente!' : temp < 18 ? 'fresquinho' : 'temperatura boa'})
+- ${weatherData.description}
 - Humidade: ${weatherData.humidity}%
-- Sensação térmica: ${weatherData.feelsLike || weatherData.temperature}°C
 
-ANÁLISE DO USUÁRIO:
-- Intenção: ${analysis.intent}
-- Confiança: ${analysis.confidence}
-- Tipo de resposta: ${analysis.response_type}
+Quero dar uma resposta natural e prática como um moçambicano daria. Se perguntaram sobre locais, dar locais específicos. Se perguntaram sobre tempo, dar detalhes do tempo.
 
-CONTEXTO:
-- Experiência: ${userContext.queryCount || 0} consultas
-- Nível: ${userContext.expertiseLevel || 'básico'}
-- Última cidade: ${userContext.lastCity || 'primeira consulta'}
+Use linguagem moçambicana casual, emojis apropriados, máximo 300 palavras.
 
-INSTRUÇÕES:
-- Use linguagem moçambicana natural
-- Seja informativo e útil
-- Inclua emojis apropriados
-- Máximo 200 palavras
-- Foque no que o usuário realmente quer saber
+Minha resposta:`;
+        }
+    }
 
-FORMATO:
-🌤️ **Clima em [Cidade]**
+    getLocationCategoryForTemperature(temp, description) {
+        if (description.toLowerCase().includes('chuva')) {
+            return `☔ *Com chuva, melhor locais cobertos:*
+🏬 • Shopping centers (Beira Shopping)
+🍽️ • Restaurantes com cobertura
+🎬 • Cinema ou lugares fechados
+📚 • Bibliotecas ou centros culturais
+☕ • Cafés aconchegantes
 
-[Descrição das condições atuais]
-[Informações relevantes]
-[Dica prática]
+💡 *Dica:* Leva guarda-chuva se tiveres que sair!`;
+        } else if (temp > 30) {
+            return `🔥 *Com ${temp}°C, locais fresquinhos são melhores:*
+🏖️ • Praia do Macúti (com sombra)
+🌳 • Parques com árvores grandes
+🏬 • Shopping centers (ar condicionado)
+🍨 • Gelatarias para refrescar
+🏊 • Piscinas ou clubes
 
-Resposta:`;
+💡 *Dica:* Vai de manhã cedo ou final da tarde!`;
+        } else if (temp > 25) {
+            return `😊 *Com ${temp}°C, tens muitas opções boas:*
+🏖️ • Praia do Macúti
+🚶 • Centro da cidade (Manga)
+🌳 • Jardins municipais
+🛍️ • Mercado central
+🍽️ • Restaurantes com esplanada
+⛵ • Porto da Beira
+
+💡 *Dica:* Tempo perfeito para qualquer atividade!`;
+        } else if (temp > 20) {
+            return `🌤️ *Com ${temp}°C fresquinho, ideais:*
+🚶 • Caminhadas pelo centro
+☕ • Cafés ao ar livre
+🏛️ • Museus e centros culturais
+🛍️ • Compras no centro
+🌳 • Parques para relaxar
+
+💡 *Dica:* Leva um casaco leve!`;
+        } else {
+            return `🧊 *Com ${temp}°C, melhor locais quentinhos:*
+☕ • Cafés fechados e aquecidos
+🏬 • Shopping centers
+🍽️ • Restaurantes com ambiente fechado
+🎬 • Cinema
+📚 • Bibliotecas
+
+💡 *Dica:* Vista-te bem quente!`;
+        }
     }
 
     generateBasicWeatherResponse(weatherData, analysis) {
         const temp = parseInt(weatherData.temperature);
         const city = weatherData.city;
         const condition = weatherData.description || 'tempo normal';
-        
+
         let tempDescription = '';
         if (temp > 30) {
             tempDescription = 'está bem quente';
@@ -269,15 +312,147 @@ ${this.getTemperatureTip(temp)}`;
         }
     }
 
+    // ===============================================
+    // SUGESTÕES BASEADAS NA TEMPERATURA ATUAL
+    // ===============================================
+
+    async generateTemperatureBasedSuggestions(weatherData, city, context = {}) {
+        try {
+            console.log(`🌡️ Gerando sugestões para ${city} com ${weatherData.temperature}°C`);
+
+            if (!this.token) {
+                return {
+                    success: false,
+                    suggestions: this.getTemperatureFallbackSuggestions(weatherData.temperature),
+                    method: 'fallback'
+                };
+            }
+
+            const prompt = this.buildTemperatureSuggestionsPrompt(weatherData, city, context);
+            const response = await this.callOpenAI(prompt, 0.8);
+
+            try {
+                const suggestions = JSON.parse(response);
+                return {
+                    success: true,
+                    suggestions: suggestions,
+                    method: 'ai_powered',
+                    temperature: weatherData.temperature,
+                    city: city
+                };
+            } catch (parseError) {
+                console.error('❌ Parse error sugestões temperatura:', parseError.message);
+                return {
+                    success: false,
+                    suggestions: this.getTemperatureFallbackSuggestions(weatherData.temperature),
+                    method: 'fallback'
+                };
+            }
+
+        } catch (error) {
+            console.error('❌ Erro sugestões baseadas temperatura:', error.message);
+            return {
+                success: false,
+                suggestions: this.getTemperatureFallbackSuggestions(weatherData.temperature),
+                method: 'fallback'
+            };
+        }
+    }
+
+    buildTemperatureSuggestionsPrompt(weatherData, city, context) {
+        const temp = weatherData.temperature;
+        const condition = weatherData.description || 'tempo normal';
+        const humidity = weatherData.humidity || 60;
+
+        return `Eh pá, preciso dar 3 sugestões fixes para alguém que está em ${city}.
+
+O tempo agora está assim:
+- ${temp}°C (${temp > 30 ? 'eish, quente!' : temp < 18 ? 'está frio' : 'não está mau'})
+- ${condition}
+- Humidade: ${humidity}% (${humidity > 80 ? 'bem abafado' : humidity < 50 ? 'ar seco' : 'normal'})
+
+Esta pessoa está a usar o WhatsApp: ${context.userPhone || 'não sei o número'}
+
+${this.getTemperatureSpecificInstructions(temp)}
+
+Quero dar sugestões que um moçambicano daria para outro moçambicano. Coisas práticas, não muito complicadas. Máximo 18 caracteres cada sugestão.
+
+Exemplos do que pode funcionar:
+- Para qualquer tempo: "Que roupa", "O que fazer", "Onde ir"
+- Quando quente: "Dicas calor", "Onde refrescar", "Bebidas frias"  
+- Quando frio: "Dicas frio", "Roupas quentes", "Como aquecer"
+- Para chuva: "Guarda-chuva", "Onde ficar", "Vai parar?"
+
+Com ${temp}°C, que 3 sugestões daria?
+
+Responde só: ["sugestão1", "sugestão2", "sugestão3"]`;
+    }
+
+    getTemperatureSpecificInstructions(temperature) {
+        if (temperature > 35) {
+            return `Com ${temperature}°C está um calor do diabo! A pessoa precisa de:
+- Refrescar urgente
+- Não apanhar insolação  
+- Beber muita água
+- Sair do sol
+Sugestões tipo: "SOS calor", "Onde refrescar", "Água gelada"`;
+        } else if (temperature > 30) {
+            return `${temperature}°C é quente mesmo! Melhor:
+- Ficar na sombra
+- Proteger do sol
+- Bebidas geladas
+- Não fazer muito esforço
+Sugestões tipo: "Dicas calor", "Sombra fresca", "Geladinho"`;
+        } else if (temperature > 25) {
+            return `${temperature}°C está bom, mas já é calor. Pode:
+- Sair com cuidado
+- Roupa leve
+- Beber água
+Sugestões tipo: "Que roupa", "O que fazer", "Cuidados sol"`;
+        } else if (temperature > 20) {
+            return `${temperature}°C está perfeito! Tempo bom para:
+- Qualquer atividade
+- Sair e aproveitar
+- Roupa confortável
+Sugestões tipo: "O que fazer", "Onde ir", "Aproveitar"`;
+        } else if (temperature > 15) {
+            return `${temperature}°C já está fresquinho. Melhor:
+- Roupa mais quente
+- Atividades que aquecem
+- Algo quente para beber
+Sugestões tipo: "Que vestir", "Aquecer", "Chá quente"`;
+        } else {
+            return `${temperature}°C está frio! A pessoa vai precisar:
+- Aquecer bem
+- Roupas grossas
+- Ficar em casa ou lugar quente
+Sugestões tipo: "Como aquecer", "Roupas frio", "Lugar quente"`;
+        }
+    }
+
+    getTemperatureFallbackSuggestions(temperature) {
+        if (temperature > 30) {
+            return ["Dicas calor", "Como refrescar", "Bebidas frias"];
+        } else if (temperature > 25) {
+            return ["Que roupa", "O que fazer", "Dicas sol"];
+        } else if (temperature > 20) {
+            return ["Atividades", "Onde ir", "Que roupa"];
+        } else if (temperature > 15) {
+            return ["Que roupa", "Bebidas quentes", "Atividades"];
+        } else {
+            return ["Dicas frio", "Roupas quentes", "Como aquecer"];
+        }
+    }
+
     // Processamento de sugestões (100% AI)
 
     async processSuggestionResponse(suggestionText, weatherData, userContext = {}) {
         console.log(`🎯 Processando sugestão com AI: "${suggestionText}"`);
-        
+
         // Delegar para o handler AI-powered
         return await this.suggestionsHandler.processSuggestionResponse(
-            suggestionText, 
-            weatherData, 
+            suggestionText,
+            weatherData,
             userContext
         );
     }
@@ -294,7 +469,7 @@ ${this.getTemperatureTip(temp)}`;
 
             const prompt = this.buildSuggestionsPrompt(context, weatherData);
             const response = await this.callOpenAI(prompt, 0.8);
-            
+
             try {
                 const suggestions = JSON.parse(response);
                 return {
@@ -324,49 +499,38 @@ ${this.getTemperatureTip(temp)}`;
     buildSuggestionsPrompt(context, weatherData) {
         const temp = weatherData?.temperature || 25;
         const city = weatherData?.city || context.lastCity || 'localização atual';
-        
-        return `
-Gere sugestões inteligentes para usuário moçambicano:
 
-CONTEXTO ATUAL:
-- Localização: ${city}
+        return `Ei, preciso dar 3 sugestões úteis para alguém em ${city}.
+
+Situação agora:
 - Temperatura: ${temp}°C
-- Condições: ${weatherData?.description || 'normais'}
-- Humidade: ${weatherData?.humidity || 60}%
-- Consultas usuário: ${context.queryCount || 0}
-- Última consulta: ${context.lastQuery || 'primeira interação'}
+- Tempo: ${weatherData?.description || 'normal'}
+- Já fez ${context.queryCount || 0} perguntas antes
+- Última pergunta: ${context.lastQuery || 'primeira vez'}
 
-REGRAS:
-- 3 sugestões relevantes
-- Máximo 18 caracteres cada
-- Linguagem moçambicana casual
-- Baseadas no contexto atual
-- Úteis e práticas
+Quero sugerir coisas que fazem sentido para a situação atual. Máximo 18 caracteres por sugestão.
 
-TIPOS DISPONÍVEIS:
-- Atividades: "O que fazer", "Onde ir", "Atividades hoje"
-- Vestuário: "Que roupa", "Como vestir", "Roupas frescas"
-- Previsões: "Tempo amanhã", "Vai chover", "Próxima semana"
-- Dicas: "Dicas calor", "Dicas frio", "Dicas chuva"
-- Comparações: "Outras cidades", "Ontem vs hoje"
-- Ajuda: "Mais info", "Comandos", "Ajuda"
-
-CONTEXTO ESPECÍFICO:
 ${this.getContextSpecificGuidance(temp, weatherData?.description, context)}
 
-Retorne APENAS array JSON:
-["sugestão1", "sugestão2", "sugestão3"]`;
+Posso sugerir coisas como:
+- Atividades: "O que fazer", "Onde ir", "Sair hoje"
+- Roupa: "Que roupa", "Como vestir"  
+- Tempo: "Tempo amanhã", "Vai chover", "Próximos dias"
+- Dicas: "Dicas calor", "Dicas frio"
+- Outros: "Outras cidades", "Mais info"
+
+Responde só: ["sugestão1", "sugestão2", "sugestão3"]`;
     }
 
     getContextSpecificGuidance(temperature, conditions, context) {
         if (temperature > 30) {
-            return "Foco em calor: refrescamento, proteção solar, atividades sombra";
+            return "Está quente! Pessoa vai querer saber como refrescar, onde ir que não seja no sol, que roupa usar para não morrer de calor.";
         } else if (temperature < 18) {
-            return "Foco em frio: aquecimento, roupas quentes, atividades internas";
+            return "Está frio! Pessoa vai querer saber como se aquecer, que roupas vestir, onde ir que seja quentinho.";
         } else if (conditions?.includes('chuva') || conditions?.includes('rain')) {
-            return "Foco em chuva: proteção, atividades cobertas, quando para";
+            return "Está chuva! Pessoa quer saber se vai parar, o que fazer em casa, quando pode sair.";
         } else {
-            return "Tempo agradável: atividades versáteis, exploração, conforto";
+            return "Tempo bom! Pessoa pode querer saber o que fazer, onde ir aproveitar, ou só estar preparada para mudanças.";
         }
     }
 
@@ -376,9 +540,9 @@ Retorne APENAS array JSON:
 
     performRuleBasedAnalysis(message, context) {
         console.log('🔄 Análise baseada em regras (fallback)');
-        
+
         const lowerMessage = message.toLowerCase().trim();
-        
+
         // Análise baseada em palavras-chave
         let intent = 'weather_query_current';
         let confidence = 0.6;
@@ -435,7 +599,7 @@ Retorne APENAS array JSON:
 
     getContextualFallbackSuggestions(context, weatherData) {
         const temp = parseInt(weatherData?.temperature || 25);
-        
+
         if (temp > 30) {
             return ["Dicas calor", "Que roupa", "Onde refrescar"];
         } else if (temp < 18) {
@@ -520,7 +684,7 @@ Retorne APENAS array JSON:
             data: analysis,
             timestamp: Date.now()
         });
-        
+
         // Limpar cache se muito grande
         if (this.analysisCache.size > 50) {
             const firstKey = this.analysisCache.keys().next().value;
@@ -533,7 +697,7 @@ Retorne APENAS array JSON:
         try {
             const testAnalysis = await this.analyzeMessage('Teste de conexão', {});
             const testSuggestions = await this.generateSmartSuggestions({}, { temperature: 25 });
-            
+
             return {
                 success: true,
                 message: 'Sistema AI 100% operacional',

@@ -43,7 +43,7 @@ function adaptAIAnalysisToLegacyFormat(aiAnalysis, originalMessage) {
   };
 
   const mapping = intentToTypeMapping[aiAnalysis.intent] || { type: 'weather_data', action: 'current' };
-  
+
   // Extrair cidade se mencionada
   let city = null;
   if (aiAnalysis.entities && aiAnalysis.entities.cities && aiAnalysis.entities.cities.length > 0) {
@@ -280,7 +280,7 @@ async function handleSuggestionsCommand(phoneNumber, user) {
     // Simular uma análise básica para gerar sugestões contextuais
     const mockAnalysis = {
       type: 'suggestions_request',
-      city: userContext.preferredCity || 'Maputo',
+      city: userContext.preferredCity || 'Beira',
       intent: 'gerar_sugestoes_inteligentes',
       action: 'show_smart_suggestions',
       expertiseLevel: userContext.expertiseLevel,
@@ -292,88 +292,97 @@ async function handleSuggestionsCommand(phoneNumber, user) {
       }
     };
 
-    // Buscar dados meteorológicos da cidade preferida para contexto
+    // Buscar dados meteorológicos atuais da cidade do usuário
     let weatherData = null;
-    if (userContext.preferredCity) {
-      try {
-        weatherData = await weatherService.getCurrentWeather(
-          userContext.preferredCity,
-          user?.units || 'celsius'
-        );
-      } catch (error) {
-        console.log('⚠️ Erro ao buscar dados meteorológicos para sugestões:', error.message);
-      }
-    }
+    const userCity = userContext.preferredCity || userContext.lastCity || 'Maputo';
 
-    // Se não temos dados meteorológicos, criar dados mock para as sugestões
-    if (!weatherData) {
+    try {
+      console.log(`🌤️ Buscando dados meteorológicos para ${userCity}...`);
+      weatherData = await weatherService.getCurrentWeather(userCity, user?.units || 'celsius');
+      console.log(`📊 Dados obtidos: ${weatherData.temperature}°C em ${weatherData.city}`);
+    } catch (error) {
+      console.log('⚠️ Erro ao buscar dados meteorológicos, usando fallback:', error.message);
       weatherData = {
-        city: userContext.preferredCity || 'Maputo',
+        city: userCity,
         temperature: 25,
-        description: 'Tempo fixe',
+        description: 'Tempo normal',
         humidity: 60,
         units: '°C',
         isForecast: false
       };
     }
 
-    // Gerar sugestões inteligentes usando a IA
-    const suggestions = await openaiService.generateSmartSuggestions(
-      userContext,
-      weatherData
+    // Gerar sugestões inteligentes baseadas na temperatura atual usando AI
+    console.log(`🤖 Gerando sugestões baseadas na temperatura de ${weatherData.temperature}°C...`);
+    const aiSuggestions = await openaiService.generateTemperatureBasedSuggestions(
+      weatherData,
+      userContext
     );
 
+    console.log("Sugestao da AI");
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, aiSuggestions.suggestions.join(', '));
+
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, aiSuggestions.suggestions);
+
     // Criar mensagem personalizada baseada no perfil do usuário
-    let suggestionsMessage = `💡 *Eh pá, aqui tens umas sugestões fixes!*\n\n`;
+    let suggestionsMessage = `💡 *Eh pá, aqui tens umas sugestões fixes baseadas no tempo atual!*\n\n`;
 
-    suggestionsMessage += `👤 *Como andas por aí:*\n`;
-    const nivelMap = {
-      'basic': 'Principiante (tás a começar)',
-      'intermediate': 'Médio (já percebes bem)',
-      'advanced': 'Experiente (és um expert!)'
-    };
-    suggestionsMessage += `• Nível: ${nivelMap[userContext.expertiseLevel] || userContext.expertiseLevel}\n`;
-    suggestionsMessage += `• Já fizeste ${userContext.queryCount} perguntas\n`;
+    // suggestionsMessage += `🌤️ *Tempo agora em ${weatherData.city}:*\n`;
+    // suggestionsMessage += `• Temperatura: ${weatherData.temperature}°C\n`;
+    // suggestionsMessage += `• Condições: ${weatherData.description}\n`;
+    // suggestionsMessage += `• Humidade: ${weatherData.humidity}%\n\n`;
 
-    if (userContext.preferredCity) {
-      suggestionsMessage += `• Tua cidade: ${userContext.preferredCity}\n`;
-      if (weatherData && !weatherData.error) {
-        suggestionsMessage += `• Agora está ${weatherData.temperature}${weatherData.units}\n`;
-      }
-    }
 
-    suggestionsMessage += `\n🎯 *Sugestões que podem te interessar:*\n`;
+    suggestionsMessage += `🎯 *Sugestões baseadas nos ${weatherData.temperature}°C atuais:*\n`;
 
-    if (suggestions && suggestions.length > 0) {
-      suggestions.forEach((suggestion, index) => {
+    if (aiSuggestions && aiSuggestions.success && aiSuggestions.suggestions && aiSuggestions.suggestions.length > 0) {
+      aiSuggestions.suggestions.forEach((suggestion, index) => {
         suggestionsMessage += `${index + 1}. ${suggestion}\n`;
       });
+
+      if (aiSuggestions.reasoning) {
+        suggestionsMessage += `\n💭 *Porquê estas sugestões:*\n${aiSuggestions.reasoning}\n`;
+      }
     } else {
-      // Sugestões de fallback baseadas no nível do usuário - versão moçambicana
-      if (userContext.expertiseLevel === 'basic') {
-        suggestionsMessage += `1. Como está o tempo hoje\n`;
-        suggestionsMessage += `2. Vai chover amanhã?\n`;
-        suggestionsMessage += `3. Que roupa devo vestir\n`;
-      } else if (userContext.expertiseLevel === 'intermediate') {
-        suggestionsMessage += `1. Previsão da próxima semana\n`;
-        suggestionsMessage += `2. Comparar tempo entre cidades\n`;
-        suggestionsMessage += `3. Conselhos para atividades\n`;
+      // Fallback baseado na temperatura
+      const temp = parseInt(weatherData.temperature);
+      if (temp > 30) {
+        suggestionsMessage += `1. Dicas para o calor\n`;
+        suggestionsMessage += `2. Atividades refrescantes\n`;
+        suggestionsMessage += `3. Que roupa usar no calor\n`;
+      } else if (temp > 25) {
+        suggestionsMessage += `1. Atividades ao ar livre\n`;
+        suggestionsMessage += `2. Tempo amanhã\n`;
+        suggestionsMessage += `3. Planos para hoje\n`;
+      } else if (temp > 20) {
+        suggestionsMessage += `1. Que roupa vestir\n`;
+        suggestionsMessage += `2. Vai esfriar mais?\n`;
+        suggestionsMessage += `3. Atividades para hoje\n`;
       } else {
-        suggestionsMessage += `1. Análise técnica do clima\n`;
-        suggestionsMessage += `2. Alertas meteorológicos\n`;
-        suggestionsMessage += `3. Histórico do tempo\n`;
+        suggestionsMessage += `1. Dicas para o frio\n`;
+        suggestionsMessage += `2. Como se aquecer\n`;
+        suggestionsMessage += `3. Roupas quentes\n`;
       }
     }
 
-    suggestionsMessage += `\n💬 *Como usar:* É só escrever qualquer uma das sugestões aí em cima, ou pergunta o que quiseres.\n`;
-    suggestionsMessage += `\n🔄 *Eh pá:* Quanto mais usares o bot, mais ele aprende contigo e as sugestões ficam melhores!`;
+    // suggestionsMessage += `\n👤 *Teu perfil:*\n`;
+    // const nivelMap = {
+    //   'basic': 'Principiante (tás a começar)',
+    //   'intermediate': 'Médio (já percebes bem)',
+    //   'advanced': 'Experiente (és um expert!)'
+    // };
+    // suggestionsMessage += `• Nível: ${nivelMap[userContext.expertiseLevel] || userContext.expertiseLevel}\n`;
+    // suggestionsMessage += `\n• Consultas feitas: ${userContext.queryCount}\n\n`;
+
+
+    // suggestionsMessage += `\n💬 *Como usar estas sugestões:*\n`;
+    // suggestionsMessage += `• Escreve o número da sugestão (ex: "1")\n`;
+    // suggestionsMessage += `• Ou escreve a sugestão completa\n`;
+    // suggestionsMessage += `• Ou faz qualquer pergunta sobre o tempo\n\n`;
+    // suggestionsMessage += `📱 *Exemplos:* "1" ou "passeio pela cidade" ou "como está o tempo?"\n\n`;
+    // suggestionsMessage += `🔄 *Eh pá:* Quanto mais usares o bot, mais ele aprende contigo e as sugestões ficam melhores!`;
 
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(suggestionsMessage, phoneNumber);
-
-    // Enviar botões interativos com as sugestões se disponíveis
-    if (suggestions && suggestions.length > 0) {
-      await sendInteractiveSuggestionButtons(phoneNumber, suggestions, userContext);
-    }
 
     // Atualizar contador de consultas
     await saveOrUpdateAdvancedUser(phoneNumber, {
@@ -381,15 +390,12 @@ async function handleSuggestionsCommand(phoneNumber, user) {
       last_command: '/sugestoes'
     });
 
-    return suggestionsMessage;
-
   } catch (error) {
     console.error('❌ Erro ao processar comando /sugestoes:', error);
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      "❌ Eh pá, não consegui gerar sugestões agora. Tenta mais tarde.\n\n💡 Podes sempre perguntar directamente: \"Como está o tempo?\"",
+      '❌ *Eh pá, algo deu errado!*\n\nTenta novamente em uns minutos.',
       phoneNumber
     );
-    return null;
   }
 }
 
@@ -737,17 +743,17 @@ async function handleAdvancedWeatherData(analysis, phoneNumber, user) {
     // Validar se os dados meteorológicos foram obtidos
     if (!weatherData || !weatherData.temperature) {
       console.log('❌ Dados meteorológicos não obtidos para:', targetCity);
-      await whatsappApi.sendMessage(
-        phoneNumber,
-        `❌ *Ops! Não consegui obter dados do tempo*\n\nPara *${targetCity}* não encontrei informações meteorológicas.\n\n💡 *Verifica:*\n• Se escreveste o nome da cidade corretamente\n• Tenta novamente em alguns minutos\n\nCidades disponíveis: Maputo, Beira, Nampula, Quelimane, Tete, Chimoio...`
+      await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+        `❌ *Ops! Não consegui obter dados do tempo*\n\nPara *${targetCity}* não encontrei informações meteorológicas.\n\n💡 *Verifica:*\n• Se escreveste o nome da cidade corretamente\n• Tenta novamente em alguns minutos\n\nCidades disponíveis: Maputo, Beira, Nampula, Quelimane, Tete, Chimoio...`,
+        phoneNumber
       );
       return;
     }
 
-    console.log('✅ Dados meteorológicos obtidos:', { 
-      city: weatherData.city, 
+    console.log('✅ Dados meteorológicos obtidos:', {
+      city: weatherData.city,
       temp: weatherData.temperature,
-      condition: weatherData.description 
+      condition: weatherData.description
     });
 
     // Gerar resposta contextual com IA
@@ -762,11 +768,16 @@ async function handleAdvancedWeatherData(analysis, phoneNumber, user) {
 
     let finalMessage;
     if (contextualResponse.success) {
+      console.log('✅ Resposta AI bem-sucedida');
       finalMessage = contextualResponse.message;
     } else {
+      console.log('⚠️ Resposta AI falhou, usando fallback simples');
+      console.log('• Erro contextualResponse:', contextualResponse.error || 'não especificado');
       // Fallback simples
       finalMessage = createSimpleWeatherMessage(weatherData);
     }
+
+    console.log('📤 Enviando mensagem final:', finalMessage.substring(0, 100) + '...');
 
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(finalMessage, phoneNumber);
 
@@ -1638,7 +1649,157 @@ async function handleOffTopicAdvanced(analysis, phoneNumber, user) {
 // SUGESTÕES INTELIGENTES
 // ===============================================
 
-async function sendIntelligentSuggestions(phoneNumber, suggestions, city) {
+async function sendIntelligentSuggestions(phoneNumber, suggestions, city, userLocation = null) {
+  try {
+    console.log(`💡 Gerando sugestões inteligentes para ${phoneNumber}`);
+
+    // 1. Determinar localização do usuário
+    let targetCity = city || userLocation;
+    if (!targetCity) {
+      // Tentar obter última cidade do usuário
+      const user = await getUserByContact(phoneNumber);
+      targetCity = user?.last_city || user?.preferred_city || 'Maputo'; // Default para Maputo
+    }
+
+    console.log(`📍 Localização para sugestões: ${targetCity}`);
+
+    // 2. Obter dados meteorológicos atuais para sugestões contextuais
+    let currentWeatherData = null;
+    try {
+      currentWeatherData = await weatherService.getCurrentWeather(targetCity);
+      console.log(`🌡️ Temperatura atual em ${targetCity}: ${currentWeatherData.temperature}°C`);
+    } catch (error) {
+      console.log(`⚠️ Não foi possível obter dados meteorológicos para ${targetCity}:`, error.message);
+    }
+
+    // 3. Gerar sugestões inteligentes baseadas na temperatura atual
+    let contextualSuggestions = suggestions;
+    if (currentWeatherData && currentWeatherData.temperature) {
+      try {
+        console.log(`🤖 Gerando sugestões AI baseadas na temperatura de ${currentWeatherData.temperature}°C`);
+
+        const aiSuggestions = await openaiService.generateTemperatureBasedSuggestions(
+          currentWeatherData,
+          targetCity,
+          {
+            userPhone: phoneNumber,
+            currentSuggestions: suggestions
+          }
+        );
+
+        if (aiSuggestions.success && aiSuggestions.suggestions) {
+          contextualSuggestions = aiSuggestions.suggestions;
+          console.log(`✅ Sugestões AI geradas: [${contextualSuggestions.join(', ')}]`);
+        }
+      } catch (error) {
+        console.log(`⚠️ Erro ao gerar sugestões AI: ${error.message}`);
+      }
+    }
+
+    // 4. Se não há sugestões válidas, gerar fallbacks baseados na temperatura
+    if (!contextualSuggestions || contextualSuggestions.length === 0) {
+      contextualSuggestions = generateTemperatureFallbackSuggestions(currentWeatherData);
+    }
+
+    // 5. Criar mensagem personalizada em português moçambicano
+    const headerText = getPersonalizedHeader(currentWeatherData);
+    const bodyText = getPersonalizedBody(currentWeatherData, targetCity);
+
+    const suggestionButtons = {
+      messaging_product: 'whatsapp',
+      recipient_type: "individual",
+      to: phoneNumber,
+      type: "interactive",
+      interactive: {
+        type: "button",
+        header: {
+          type: "text",
+          text: headerText
+        },
+        body: {
+          text: bodyText
+        },
+        action: {
+          buttons: contextualSuggestions.slice(0, 3).map((suggestion, index) => {
+            return {
+              type: "reply",
+              reply: {
+                id: `temp_suggestion_${targetCity}_${currentWeatherData?.temperature || 'unknown'}_${index}`,
+                title: suggestion.length > 20 ? suggestion.substring(0, 17) + "..." : suggestion
+              }
+            };
+          })
+        }
+      }
+    };
+
+    console.log(`📤 Enviando sugestões contextuais para ${phoneNumber}`);
+    const result = await whatsappApi.sendMessage(suggestionButtons);
+    console.log('✅ Sugestões inteligentes enviadas:', result.success ? 'Sucesso' : 'Erro');
+
+  } catch (error) {
+    console.error('❌ Erro ao enviar sugestões inteligentes:', error.message);
+  }
+}
+
+// ===============================================
+// FUNÇÕES AUXILIARES PARA SUGESTÕES CONTEXTUAIS
+// ===============================================
+
+function generateTemperatureFallbackSuggestions(weatherData) {
+  const temp = weatherData?.temperature || 25;
+
+  if (temp > 30) {
+    return ["Como refrescar", "Dicas calor", "Onde ir"];
+  } else if (temp > 25) {
+    return ["O que fazer", "Que roupa", "Onde ir"];
+  } else if (temp > 20) {
+    return ["Que roupa", "Atividades", "Tempo amanhã"];
+  } else {
+    return ["Como aquecer", "Roupas quentes", "Bebidas quentes"];
+  }
+}
+
+function getPersonalizedHeader(weatherData) {
+  const temp = weatherData?.temperature;
+
+  if (!temp) return "💡 Sugestões para ti";
+
+  if (temp > 32) {
+    return "🔥 Está bem quente!";
+  } else if (temp > 28) {
+    return "☀️ Está um calorzito";
+  } else if (temp > 23) {
+    return "🌤️ Tempo agradável";
+  } else if (temp > 18) {
+    return "🌥️ Está fresco";
+  } else {
+    return "❄️ Está frio";
+  }
+}
+
+function getPersonalizedBody(weatherData, city) {
+  const temp = weatherData?.temperature;
+
+  if (!temp) {
+    return `Eh pá, aqui tens umas sugestões fixes para ${city}:`;
+  }
+
+  if (temp > 32) {
+    return `Com ${temp}°C em ${city}, melhor procurar sombra! Que tal:`;
+  } else if (temp > 28) {
+    return `${temp}°C em ${city}... está um calor bom! Sugestões:`;
+  } else if (temp > 23) {
+    return `${temp}°C em ${city} - tempo perfeito! Que tal:`;
+  } else if (temp > 18) {
+    return `Com ${temp}°C em ${city}, tempo fresquinho. Sugestões:`;
+  } else {
+    return `${temp}°C em ${city}... brrr! Melhor:`;
+  }
+}
+
+// Função original mantida para compatibilidade
+async function sendIntelligentSuggestionsLegacy(phoneNumber, suggestions, city) {
   try {
     if (!suggestions || suggestions.length === 0) return;
 
