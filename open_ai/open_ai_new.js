@@ -4,18 +4,18 @@ const AIBasedSuggestionsHandler = require('./suggestions_handler_ai');
 
 class OPENAI {
     constructor() {
-        this.token = process.env.OPEN_AI;
+        this.token = process.env.OPENAI_API_KEY;
         this.baseURL = 'https://api.openai.com/v1';
         this.model = 'gpt-3.5-turbo';
         this.maxTokens = 300;
-        
+
         // Inicializar handler de sugestões 100% AI
         this.suggestionsHandler = new AIBasedSuggestionsHandler(this.token);
-        
+
         // Cache para análises frequentes
         this.analysisCache = new Map();
         this.cacheExpiry = 1800000; // 30 minutos
-        
+
         if (!this.token) {
             console.warn('⚠️ Token OpenAI não encontrado - modo limitado');
         } else {
@@ -40,10 +40,10 @@ class OPENAI {
 
             // Análise completa com AI
             const analysis = await this.performAIAnalysis(message, context);
-            
+
             // Cache do resultado
             this.setCachedAnalysis(cacheKey, analysis);
-            
+
             return analysis;
 
         } catch (error) {
@@ -58,11 +58,11 @@ class OPENAI {
         }
 
         const prompt = this.buildAnalysisPrompt(message, context);
-        
+
         try {
             const response = await this.callOpenAI(prompt, 0.3);
             const analysis = JSON.parse(response);
-            
+
             return {
                 success: true,
                 analysis: analysis,
@@ -135,149 +135,16 @@ RESPONDA APENAS JSON:
     }
 
     // ===============================================
-    // MÉTODO DE COMPATIBILIDADE PARA RESPOSTA CONTEXTUAL
+    // PROCESSAMENTO DE SUGESTÕES (100% AI)
     // ===============================================
-
-    async generateContextualResponse(analysis, weatherData, userContext = {}) {
-        try {
-            console.log('🤖 Gerando resposta contextual baseada em AI');
-            
-            // Se não há dados meteorológicos, retornar erro
-            if (!weatherData || !weatherData.temperature) {
-                return {
-                    success: false,
-                    message: "Dados meteorológicos não disponíveis"
-                };
-            }
-
-            // Gerar resposta contextual baseada no intent e dados
-            const response = await this.generateWeatherResponse(analysis, weatherData, userContext);
-            
-            // Gerar sugestões inteligentes
-            const suggestions = await this.generateSmartSuggestions(userContext, weatherData);
-            
-            return {
-                success: true,
-                message: response,
-                suggestions: suggestions.suggestions || [],
-                weatherData: weatherData,
-                analysis: analysis
-            };
-
-        } catch (error) {
-            console.error('❌ Erro na resposta contextual:', error.message);
-            return {
-                success: false,
-                message: "Erro ao processar resposta",
-                error: error.message
-            };
-        }
-    }
-
-    async generateWeatherResponse(analysis, weatherData, userContext) {
-        try {
-            if (!this.token) {
-                return this.generateBasicWeatherResponse(weatherData, analysis);
-            }
-
-            const prompt = this.buildWeatherResponsePrompt(analysis, weatherData, userContext);
-            const response = await this.callOpenAI(prompt, 0.7);
-            
-            return response.trim();
-
-        } catch (error) {
-            console.error('❌ Erro AI weather response:', error.message);
-            return this.generateBasicWeatherResponse(weatherData, analysis);
-        }
-    }
-
-    buildWeatherResponsePrompt(analysis, weatherData, userContext) {
-        return `
-SISTEMA: Assistente meteorológico moçambicano
-
-DADOS METEOROLÓGICOS:
-- Cidade: ${weatherData.city}
-- Temperatura: ${weatherData.temperature}°C
-- Condição: ${weatherData.description}
-- Humidade: ${weatherData.humidity}%
-- Sensação térmica: ${weatherData.feelsLike || weatherData.temperature}°C
-
-ANÁLISE DO USUÁRIO:
-- Intenção: ${analysis.intent}
-- Confiança: ${analysis.confidence}
-- Tipo de resposta: ${analysis.response_type}
-
-CONTEXTO:
-- Experiência: ${userContext.queryCount || 0} consultas
-- Nível: ${userContext.expertiseLevel || 'básico'}
-- Última cidade: ${userContext.lastCity || 'primeira consulta'}
-
-INSTRUÇÕES:
-- Use linguagem moçambicana natural
-- Seja informativo e útil
-- Inclua emojis apropriados
-- Máximo 200 palavras
-- Foque no que o usuário realmente quer saber
-
-FORMATO:
-🌤️ **Clima em [Cidade]**
-
-[Descrição das condições atuais]
-[Informações relevantes]
-[Dica prática]
-
-Resposta:`;
-    }
-
-    generateBasicWeatherResponse(weatherData, analysis) {
-        const temp = parseInt(weatherData.temperature);
-        const city = weatherData.city;
-        const condition = weatherData.description || 'tempo normal';
-        
-        let tempDescription = '';
-        if (temp > 30) {
-            tempDescription = 'está bem quente';
-        } else if (temp > 25) {
-            tempDescription = 'está agradável';
-        } else if (temp > 20) {
-            tempDescription = 'está fresco';
-        } else {
-            tempDescription = 'está frio';
-        }
-
-        return `🌤️ **Clima em ${city}**
-
-Agora ${tempDescription} com ${temp}°C.
-
-🌡️ **Condições atuais:**
-• Temperatura: ${temp}°C
-• Estado: ${condition}
-• Humidade: ${weatherData.humidity || 'N/A'}%
-
-${this.getTemperatureTip(temp)}`;
-    }
-
-    getTemperatureTip(temperature) {
-        if (temperature > 30) {
-            return '💡 **Dica:** Mantenha-se hidratado e procure sombra!';
-        } else if (temperature > 25) {
-            return '💡 **Dica:** Tempo ideal para atividades ao ar livre!';
-        } else if (temperature > 20) {
-            return '💡 **Dica:** Leve um casaco leve se sair à noite!';
-        } else {
-            return '💡 **Dica:** Vista roupas quentes e mantenha-se aquecido!';
-        }
-    }
-
-    // Processamento de sugestões (100% AI)
 
     async processSuggestionResponse(suggestionText, weatherData, userContext = {}) {
         console.log(`🎯 Processando sugestão com AI: "${suggestionText}"`);
-        
+
         // Delegar para o handler AI-powered
         return await this.suggestionsHandler.processSuggestionResponse(
-            suggestionText, 
-            weatherData, 
+            suggestionText,
+            weatherData,
             userContext
         );
     }
@@ -294,7 +161,7 @@ ${this.getTemperatureTip(temp)}`;
 
             const prompt = this.buildSuggestionsPrompt(context, weatherData);
             const response = await this.callOpenAI(prompt, 0.8);
-            
+
             try {
                 const suggestions = JSON.parse(response);
                 return {
@@ -324,7 +191,7 @@ ${this.getTemperatureTip(temp)}`;
     buildSuggestionsPrompt(context, weatherData) {
         const temp = weatherData?.temperature || 25;
         const city = weatherData?.city || context.lastCity || 'localização atual';
-        
+
         return `
 Gere sugestões inteligentes para usuário moçambicano:
 
@@ -376,9 +243,9 @@ Retorne APENAS array JSON:
 
     performRuleBasedAnalysis(message, context) {
         console.log('🔄 Análise baseada em regras (fallback)');
-        
+
         const lowerMessage = message.toLowerCase().trim();
-        
+
         // Análise baseada em palavras-chave
         let intent = 'weather_query_current';
         let confidence = 0.6;
@@ -435,7 +302,7 @@ Retorne APENAS array JSON:
 
     getContextualFallbackSuggestions(context, weatherData) {
         const temp = parseInt(weatherData?.temperature || 25);
-        
+
         if (temp > 30) {
             return ["Dicas calor", "Que roupa", "Onde refrescar"];
         } else if (temp < 18) {
@@ -520,7 +387,7 @@ Retorne APENAS array JSON:
             data: analysis,
             timestamp: Date.now()
         });
-        
+
         // Limpar cache se muito grande
         if (this.analysisCache.size > 50) {
             const firstKey = this.analysisCache.keys().next().value;
@@ -533,7 +400,7 @@ Retorne APENAS array JSON:
         try {
             const testAnalysis = await this.analyzeMessage('Teste de conexão', {});
             const testSuggestions = await this.generateSmartSuggestions({}, { temperature: 25 });
-            
+
             return {
                 success: true,
                 message: 'Sistema AI 100% operacional',

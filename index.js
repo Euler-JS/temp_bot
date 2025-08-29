@@ -24,6 +24,54 @@ const openaiService = new OPENAI(process.env.OPEN_AI || "");
 const dbService = new SupabaseService();
 
 // ===============================================
+// ADAPTADOR PARA NOVA ESTRUTURA AI
+// ===============================================
+
+function adaptAIAnalysisToLegacyFormat(aiAnalysis, originalMessage) {
+  // Mapear novos intents para o sistema de roteamento existente
+  const intentToTypeMapping = {
+    'weather_query_current': { type: 'weather_data', action: 'current' },
+    'weather_query_forecast': { type: 'weather_data', action: 'forecast' },
+    'activity_recommendation': { type: 'practical_tips', action: 'activities' },
+    'clothing_advice': { type: 'practical_tips', action: 'clothing' },
+    'weather_tips': { type: 'practical_tips', action: 'tips' },
+    'city_comparison': { type: 'comparison', action: 'cities' },
+    'general_help': { type: 'help', action: 'general' },
+    'greeting': { type: 'conversation', action: 'greeting' },
+    'suggestion_response': { type: 'suggestion', action: 'response' },
+    'weather_education': { type: 'weather_education', action: 'explain' }
+  };
+
+  const mapping = intentToTypeMapping[aiAnalysis.intent] || { type: 'weather_data', action: 'current' };
+  
+  // Extrair cidade se mencionada
+  let city = null;
+  if (aiAnalysis.entities && aiAnalysis.entities.cities && aiAnalysis.entities.cities.length > 0) {
+    city = aiAnalysis.entities.cities[0];
+  } else {
+    // Detectar cidade no texto original
+    const cities = ['maputo', 'beira', 'nampula', 'quelimane', 'tete', 'chimoio', 'pemba', 'xai-xai', 'lichinga', 'inhambane'];
+    const lowerMessage = originalMessage.toLowerCase();
+    city = cities.find(c => lowerMessage.includes(c)) || null;
+  }
+
+  return {
+    type: mapping.type,
+    action: mapping.action,
+    intent: aiAnalysis.intent,
+    city: city,
+    confidence: aiAnalysis.confidence || 0.7,
+    entities: aiAnalysis.entities || {},
+    timeframe: aiAnalysis.entities?.timeframe || 'none',
+    weather_aspect: aiAnalysis.entities?.weather_aspect || 'general',
+    response_type: aiAnalysis.response_type || 'informative',
+    requires_weather_data: aiAnalysis.requires_weather_data !== false,
+    originalAIAnalysis: aiAnalysis,
+    adaptedFromAI: true
+  };
+}
+
+// ===============================================
 // GESTÃO AVANÇADA DE USUÁRIOS COM SUPABASE
 // ===============================================
 
@@ -117,14 +165,15 @@ async function processAdvancedTextMessage(messageText, phoneNumber, enableAutoDe
     }
 
     // 1. Análise completa com IA
-    const analysisResult = await openaiService.analyzeUserMessage(messageText, {
+    const analysisResult = await openaiService.analyzeMessage(messageText, {
       preferredCity: user?.preferred_city,
       language: user?.language || 'pt',
       queryCount: user?.query_count || 0,
       expertiseLevel: user?.expertise_level || 'basic',
       conversationHistory: user?.conversation_history || [],
       lastCity: user?.last_city,
-      weatherPreferences: user?.weather_preferences
+      weatherPreferences: user?.weather_preferences,
+      currentLocation: user?.last_city
     });
 
     if (!analysisResult.success) {
@@ -135,8 +184,12 @@ async function processAdvancedTextMessage(messageText, phoneNumber, enableAutoDe
     const analysis = analysisResult.analysis;
     console.log(`📊 Análise completa:`, JSON.stringify(analysis, null, 2));
 
+    // Adaptar nova estrutura AI para o sistema de roteamento existente
+    const adaptedAnalysis = adaptAIAnalysisToLegacyFormat(analysis, messageText);
+    console.log(`🔄 Análise adaptada:`, JSON.stringify(adaptedAnalysis, null, 2));
+
     // 2. Roteamento inteligente (com controle de detecção automática de bairros)
-    const response = await routeAdvancedRequest(analysis, messageText, phoneNumber, user, enableAutoDetection);
+    const response = await routeAdvancedRequest(adaptedAnalysis, messageText, phoneNumber, user, enableAutoDetection);
 
     // 3. Salvar contexto da conversa
     await saveConversationContext(phoneNumber, messageText, analysis, response);
@@ -265,10 +318,9 @@ async function handleSuggestionsCommand(phoneNumber, user) {
     }
 
     // Gerar sugestões inteligentes usando a IA
-    const suggestions = await openaiService.generateIntelligentSuggestions(
-      mockAnalysis,
-      weatherData,
-      userContext
+    const suggestions = await openaiService.generateSmartSuggestions(
+      userContext,
+      weatherData
     );
 
     // Criar mensagem personalizada baseada no perfil do usuário
@@ -682,6 +734,22 @@ async function handleAdvancedWeatherData(analysis, phoneNumber, user) {
       );
     }
 
+    // Validar se os dados meteorológicos foram obtidos
+    if (!weatherData || !weatherData.temperature) {
+      console.log('❌ Dados meteorológicos não obtidos para:', targetCity);
+      await whatsappApi.sendMessage(
+        phoneNumber,
+        `❌ *Ops! Não consegui obter dados do tempo*\n\nPara *${targetCity}* não encontrei informações meteorológicas.\n\n💡 *Verifica:*\n• Se escreveste o nome da cidade corretamente\n• Tenta novamente em alguns minutos\n\nCidades disponíveis: Maputo, Beira, Nampula, Quelimane, Tete, Chimoio...`
+      );
+      return;
+    }
+
+    console.log('✅ Dados meteorológicos obtidos:', { 
+      city: weatherData.city, 
+      temp: weatherData.temperature,
+      condition: weatherData.description 
+    });
+
     // Gerar resposta contextual com IA
     const contextualResponse = await openaiService.generateContextualResponse(
       analysis,
@@ -694,7 +762,7 @@ async function handleAdvancedWeatherData(analysis, phoneNumber, user) {
 
     let finalMessage;
     if (contextualResponse.success) {
-      finalMessage = `🌤️ *${weatherData.city}*\n\n${contextualResponse.response}`;
+      finalMessage = contextualResponse.message;
     } else {
       // Fallback simples
       finalMessage = createSimpleWeatherMessage(weatherData);
@@ -1932,7 +2000,7 @@ app.get("/health", async (req, res) => {
   try {
     // Testar conexões
     const dbOk = await dbService.testConnection();
-    const openaiOk = await openaiService.testConnection();
+    const openaiOk = await openaiService.testAIConnection();
 
     res.json({
       status: "ok",
@@ -1963,7 +2031,7 @@ app.listen(port, async () => {
     const dbTest = await dbService.testConnection();
     console.log(`🗄️  Database (Supabase): ${dbTest ? '✅ OK' : '❌ ERRO'}`);
 
-    const aiTest = await openaiService.testConnection();
+    const aiTest = await openaiService.testAIConnection();
     console.log(`🧠 OpenAI: ${aiTest.success ? '✅ OK' : '❌ ERRO'}`);
 
     console.log(`💡 Funcionalidades ativas:`);
