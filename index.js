@@ -3084,8 +3084,13 @@ app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'admin', 'index.html'));
 });
 
-// Servir arquivo JS do admin
+// Servir arquivo JS do admin (duas rotas para compatibilidade)
 app.get('/admin/admin.js', (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin', 'admin.js'));
+});
+
+// Rota adicional para compatibilidade com caminho relativo
+app.get('/admin.js', (req, res) => {
   res.sendFile(path.join(__dirname, 'admin', 'admin.js'));
 });
 
