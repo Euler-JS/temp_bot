@@ -3079,6 +3079,7 @@ app.get("/health", async (req, res) => {
 // ROTAS DO PAINEL ADMINISTRATIVO
 // ===============================================
 
+
 // Rota principal do painel admin - serve o HTML
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'admin', 'index.html'));
