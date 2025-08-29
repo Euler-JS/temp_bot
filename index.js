@@ -2,6 +2,7 @@
 require('dotenv').config();
 const express = require("express");
 const bodyParser = require("body-parser");
+const path = require("path");
 const WhatsAppApi = require("./whatsapp_api/connection");
 const WeatherService = require("./weather_api/weather_service");
 const OPENAI = require("./open_ai/open_ai");
@@ -3078,8 +3079,15 @@ app.get("/health", async (req, res) => {
 // ROTAS DO PAINEL ADMINISTRATIVO
 // ===============================================
 
-// Servir arquivos estáticos do painel admin
-app.use('/admin', express.static('admin'));
+// Rota principal do painel admin - serve o HTML
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin', 'index.html'));
+});
+
+// Servir arquivo JS do admin
+app.get('/admin/admin.js', (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin', 'admin.js'));
+});
 
 // API endpoints para o painel administrativo
 app.get("/admin/stats", async (req, res) => {
