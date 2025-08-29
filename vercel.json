@@ -8,6 +8,10 @@
   ],
   "routes": [
     {
+      "src": "/(.*)",
+      "dest": "/index.js"
+    },
+    {
       "src": "/admin$",
       "dest": "/index.js"
     },
