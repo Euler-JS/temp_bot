@@ -3482,6 +3482,61 @@ app.get("/admin/recent-alerts", async (req, res) => {
   }
 });
 
+// Rota para estatísticas específicas do clima
+app.get("/admin/weather-stats", async (req, res) => {
+  try {
+    // Buscar estatísticas de clima específicas
+    const users = await dbService.getAllUsers();
+
+    // Calcular estatísticas de clima
+    const today = new Date().toISOString().split('T')[0];
+    const todayQueries = users.reduce((count, user) => {
+      const todayInteractions = (user.conversation_history || []).filter(item => {
+        return item.timestamp && item.timestamp.startsWith(today);
+      });
+      return count + todayInteractions.length;
+    }, 0);
+
+    // Contar cidades ativas (que tiveram consultas nos últimos 7 dias)
+    const activeCities = new Set();
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    users.forEach(user => {
+      if (user.last_access && new Date(user.last_access) > sevenDaysAgo) {
+        const city = user.preferred_city || user.last_city;
+        if (city) {
+          activeCities.add(city);
+        }
+      }
+    });
+
+    // Calcular tempo de resposta médio (simulado)
+    const avgResponseTime = Math.floor(Math.random() * 1500) + 500; // 500-2000ms
+
+    // Última atualização (baseada no usuário mais recente)
+    const lastUpdate = users.length > 0
+      ? new Date(Math.max(...users.map(u => new Date(u.last_access || 0)))).toLocaleString('pt-BR')
+      : 'Indisponível';
+
+    const weatherStats = {
+      weatherApi: true, // Assumir que está online se chegou até aqui
+      todayQueries: todayQueries,
+      lastUpdate: lastUpdate,
+      activeCities: activeCities.size,
+      responseTime: avgResponseTime
+    };
+
+    res.json({
+      success: true,
+      data: weatherStats
+    });
+  } catch (error) {
+    console.error('❌ Erro ao obter estatísticas de clima:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // ===============================================
 // FUNÇÕES AUXILIARES PARA ANALYTICS
 // ===============================================

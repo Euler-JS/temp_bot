@@ -83,13 +83,13 @@ ON CONFLICT (setting_key) DO NOTHING;
 -- Views úteis para analytics
 CREATE OR REPLACE VIEW users_by_region AS
 SELECT 
-    COALESCE(preferred_city, last_city, 'Não definido') as region,
+    INITCAP(LOWER(TRIM(COALESCE(preferred_city, last_city, 'Não definido')))) as region,
     COUNT(*) as user_count,
     COUNT(CASE WHEN last_access >= NOW() - INTERVAL '7 days' THEN 1 END) as active_users,
     AVG(query_count) as avg_queries,
     MAX(last_access) as last_activity
 FROM users 
-GROUP BY COALESCE(preferred_city, last_city, 'Não definido')
+GROUP BY INITCAP(LOWER(TRIM(COALESCE(preferred_city, last_city, 'Não definido'))))
 ORDER BY user_count DESC;
 
 CREATE OR REPLACE VIEW recent_alerts_summary AS

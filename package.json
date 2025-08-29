@@ -11,6 +11,8 @@
     "test:admin:performance": "node test_admin_panel.js --performance",
     "setup:admin": "node scripts/setup_admin_tables.js",
     "setup:admin:seed": "node scripts/setup_admin_tables.js --seed",
+    "normalize:cities": "node scripts/normalize_cities.js",
+    "normalize:cities:check": "node scripts/normalize_cities.js check",
     "build": "echo 'Build completed successfully'",
     "vercel-build": "echo 'Vercel build completed'",
     "lint": "echo 'Linting would go here'",

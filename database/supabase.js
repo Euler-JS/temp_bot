@@ -16,6 +16,28 @@ class SupabaseService {
     }
 
     // ===============================================
+    // FUNÇÕES UTILITÁRIAS
+    // ===============================================
+
+    /**
+     * Normaliza nomes de cidades para evitar duplicações
+     * Exemplos: "beira" -> "Beira", "MAPUTO" -> "Maputo", " nampula " -> "Nampula"
+     */
+    normalizeCityName(cityName) {
+        if (!cityName || typeof cityName !== 'string') {
+            return 'Não definido';
+        }
+
+        // Remove espaços extras, converte para lowercase e depois capitaliza primeira letra
+        const normalized = cityName
+            .trim()
+            .toLowerCase()
+            .replace(/\b\w/g, letter => letter.toUpperCase());
+
+        return normalized || 'Não definido';
+    }
+
+    // ===============================================
     // GESTÃO DE USUÁRIOS
     // ===============================================
 
@@ -150,7 +172,7 @@ class SupabaseService {
             // Preparar atualizações
             const updates = {
                 conversation_history: conversationHistory,
-                last_city: analysis.city || user.last_city,
+                last_city: this.normalizeCityName(analysis.city) || user.last_city,
                 last_access: new Date().toISOString()
             };
 
@@ -476,7 +498,7 @@ class SupabaseService {
                 // Converter campos do JSON para o formato do Supabase
                 const supabaseUser = {
                     contact: user.contact,
-                    preferred_city: user.preferredCity,
+                    preferred_city: this.normalizeCityName(user.preferredCity),
                     units: user.units,
                     language: user.language,
                     notifications: user.notifications,
@@ -484,7 +506,7 @@ class SupabaseService {
                     expertise_level: user.expertiseLevel,
                     preferred_complexity: user.preferredComplexity,
                     conversation_history: user.conversationHistory,
-                    last_city: user.lastCity,
+                    last_city: this.normalizeCityName(user.lastCity),
                     preferred_notification_time: user.preferredNotificationTime,
                     weather_preferences: user.weatherPreferences,
                     profile_data: user.profileData,
@@ -522,7 +544,8 @@ class SupabaseService {
             let query = this.supabase.from('users').select('*');
 
             if (region && region !== 'all') {
-                query = query.or(`preferred_city.eq.${region},last_city.eq.${region}`);
+                const normalizedRegion = this.normalizeCityName(region);
+                query = query.or(`preferred_city.eq.${normalizedRegion},last_city.eq.${normalizedRegion}`);
             }
 
             const { data, error } = await query;

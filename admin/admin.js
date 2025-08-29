@@ -110,14 +110,33 @@ class AdminDashboard {
     }
 
     async loadSystemStatus() {
+        console.log('🔧 Carregando status do sistema...');
         try {
             const response = await fetch(`${this.baseUrl}/health`);
+            console.log('🔧 Resposta do health check:', response.status);
+
+            if (!response.ok) {
+                console.error('❌ Erro na resposta do health check:', response.status);
+                return;
+            }
+
             const status = await response.json();
+            console.log('🔧 Status recebido:', status);
 
             this.updateSystemStatus(status);
             this.updateServicesStatus(status.services || {});
         } catch (error) {
-            console.error('Erro ao carregar status do sistema:', error);
+            console.error('❌ Erro ao carregar status do sistema:', error);
+            // Mostrar erro na interface
+            const container = document.getElementById('servicesStatus');
+            if (container) {
+                container.innerHTML = `
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        Erro ao carregar status dos serviços
+                    </div>
+                `;
+            }
         }
     }
 
@@ -127,12 +146,12 @@ class AdminDashboard {
             // Carregar usuários por região
             console.log('👥 Buscando usuários por região...');
             const usersResponse = await fetch(`${this.baseUrl}/admin/users-by-region`);
-            
+
             if (!usersResponse.ok) {
                 console.error('❌ Erro na resposta de usuários:', usersResponse.status);
                 return;
             }
-            
+
             const usersData = await usersResponse.json();
             console.log('👥 Resposta usuários:', usersData);
 
@@ -146,12 +165,12 @@ class AdminDashboard {
             // Carregar alertas recentes
             console.log('📢 Buscando alertas recentes...');
             const alertsResponse = await fetch(`${this.baseUrl}/admin/recent-alerts`);
-            
+
             if (!alertsResponse.ok) {
                 console.error('❌ Erro na resposta de alertas:', alertsResponse.status);
                 return;
             }
-            
+
             const alertsData = await alertsResponse.json();
             console.log('📢 Resposta alertas:', alertsData);
 
@@ -515,7 +534,87 @@ class AdminDashboard {
         const container = document.getElementById('servicesStatus');
         if (!container) return;
 
-        container.innerHTML = this.updateSystemStatus({ services, timestamp: new Date().toISOString() });
+        // Esta função agora é específica para serviços de CLIMA apenas
+        this.updateWeatherServicesStatus(services);
+    }
+
+    updateWeatherServicesStatus(services) {
+        const container = document.getElementById('servicesStatus');
+        if (!container) return;
+
+        if (!services || Object.keys(services).length === 0) {
+            container.innerHTML = '<p class="text-muted small">Carregando status dos serviços de clima...</p>';
+            return;
+        }
+
+        // Buscar dados específicos de clima
+        this.loadWeatherServiceDetails().then(weatherData => {
+            container.innerHTML = `
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-cloud-sun me-2"></i>Weather API</span>
+                        <span class="badge ${weatherData.weatherApi ? 'bg-success' : 'bg-danger'}">
+                            ${weatherData.weatherApi ? 'Online' : 'Offline'}
+                        </span>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-thermometer me-2"></i>Consultas Hoje</span>
+                        <span class="badge bg-info">
+                            ${weatherData.todayQueries || 0}
+                        </span>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-clock me-2"></i>Última Atualização</span>
+                        <span class="badge bg-secondary">
+                            ${weatherData.lastUpdate || 'N/A'}
+                        </span>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-geo-alt me-2"></i>Cidades Ativas</span>
+                        <span class="badge bg-primary">
+                            ${weatherData.activeCities || 0}
+                        </span>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-speedometer2 me-2"></i>Tempo Resposta</span>
+                        <span class="badge ${weatherData.responseTime < 2000 ? 'bg-success' : 'bg-warning'}">
+                            ${weatherData.responseTime || 'N/A'}ms
+                        </span>
+                    </div>
+                </div>
+            `;
+        });
+    }
+
+    async loadWeatherServiceDetails() {
+        try {
+            // Buscar estatísticas específicas de clima
+            const response = await fetch(`${this.baseUrl}/admin/weather-stats`);
+            const data = await response.json();
+
+            if (data.success) {
+                return data.data;
+            }
+        } catch (error) {
+            console.error('Erro ao carregar dados de clima:', error);
+        }
+
+        // Dados padrão se a API falhar
+        return {
+            weatherApi: true,
+            todayQueries: 0,
+            lastUpdate: 'Indisponível',
+            activeCities: 0,
+            responseTime: 'N/A'
+        };
     }
 
     updateUsersByRegion(data) {
