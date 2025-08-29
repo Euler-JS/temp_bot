@@ -158,10 +158,18 @@ async function processAdvancedTextMessage(messageText, phoneNumber, enableAutoDe
       return await handleSuggestionsCommand(phoneNumber, user);
     }
 
-    // Novo comando para conselhos por bairro
+    // Comando para conselhos de segurança baseados na temperatura
     if (messageText.toLowerCase().startsWith('/conselhos') ||
       messageText.toLowerCase() === 'conselhos') {
-      return await handleNeighborhoodMenuCommand(phoneNumber, user);
+      return await handleSafetyAdviceCommand(phoneNumber, user);
+    }
+
+    // Comando para apresentação completa da Joana Bot
+    if (messageText.toLowerCase().startsWith('/joana') ||
+      messageText.toLowerCase().startsWith('/sobre') ||
+      messageText.toLowerCase() === 'joana' ||
+      messageText.toLowerCase() === 'sobre') {
+      return await handleJoanaBotIntroduction(phoneNumber, user);
     }
 
     // 1. Análise completa com IA
@@ -188,6 +196,40 @@ async function processAdvancedTextMessage(messageText, phoneNumber, enableAutoDe
     const adaptedAnalysis = adaptAIAnalysisToLegacyFormat(analysis, messageText);
     console.log(`🔄 Análise adaptada:`, JSON.stringify(adaptedAnalysis, null, 2));
 
+    // NOVA LÓGICA: Verificar se é relacionado ao clima
+    const isWeatherQuery = openaiService.isWeatherRelatedQuery(analysis);
+    console.log(`🌤️ É pergunta sobre clima? ${isWeatherQuery}`);
+
+    if (!isWeatherQuery) {
+      // NÃO é sobre clima - usar resposta amigável em português moçambicano
+      console.log('💬 Pergunta não é sobre clima - usando resposta amigável');
+
+      const friendlyResponse = await openaiService.generateFriendlyMozambicanResponse(
+        messageText,
+        analysis,
+        {
+          queryCount: user?.query_count || 0,
+          lastCity: user?.last_city,
+          expertiseLevel: user?.expertise_level || 'basic'
+        }
+      );
+
+      if (friendlyResponse.success) {
+        await whatsappApi.enviarMensagemUsandoWhatsappAPI(friendlyResponse.message, phoneNumber);
+
+        // Atualizar contador de consultas
+        await saveOrUpdateAdvancedUser(phoneNumber, {
+          query_count: (user?.query_count || 0) + 1,
+          last_interaction_type: 'general_friendly'
+        });
+
+        return friendlyResponse.message;
+      }
+    }
+
+    // É sobre clima - continuar com roteamento normal
+    console.log('🌤️ Pergunta sobre clima - usando roteamento meteorológico');
+
     // 2. Roteamento inteligente (com controle de detecção automática de bairros)
     const response = await routeAdvancedRequest(adaptedAnalysis, messageText, phoneNumber, user, enableAutoDetection);
 
@@ -205,29 +247,10 @@ async function processAdvancedTextMessage(messageText, phoneNumber, enableAutoDe
   }
 }
 
-async function routeAdvancedRequest(analysis, originalMessage, phoneNumber, user, enableAutoNeighborhoodDetection = false) {
+async function routeAdvancedRequest(analysis, originalMessage, phoneNumber, user) {
   const { type, action, intent } = analysis;
 
   console.log(`🎯 Roteamento avançado: type=${type}, action=${action}`);
-
-  // SEMPRE detectar bairros quando a mensagem contém "conselhos para" 
-  const neighborhood = detectNeighborhood(originalMessage);
-  if (neighborhood && (originalMessage.toLowerCase().includes('conselho') ||
-    originalMessage.toLowerCase().includes('dica'))) {
-    console.log(`🏘️ Detectado bairro: ${neighborhood} - Forçando rota de conselhos por bairro`);
-    return await handleNeighborhoodAdvice({ ...analysis, neighborhood }, phoneNumber, user);
-  }
-
-  // Detectar se há menção de bairros da Beira para outros casos
-  if (enableAutoNeighborhoodDetection && neighborhood) {
-    if (originalMessage.toLowerCase().includes('chuva') ||
-      originalMessage.toLowerCase().includes('calor') ||
-      originalMessage.toLowerCase().includes('frio') ||
-      type === 'weather_data') {
-      console.log(`🏘️ Detectado bairro automaticamente: ${neighborhood}`);
-      return await handleNeighborhoodAdvice({ ...analysis, neighborhood }, phoneNumber, user);
-    }
-  }
 
   switch (type) {
     case 'weather_data':
@@ -242,8 +265,8 @@ async function routeAdvancedRequest(analysis, originalMessage, phoneNumber, user
     case 'practical_tips':
       return await handlePracticalTips(analysis, phoneNumber, user);
 
-    case 'neighborhood_advice':
-      return await handleNeighborhoodAdvice(analysis, phoneNumber, user);
+    case 'safety_advice':
+      return await handleSafetyAdvice(analysis, phoneNumber, user);
 
     case 'reminder':
       return await handleReminderRequest(analysis, phoneNumber, user);
@@ -277,21 +300,6 @@ async function handleSuggestionsCommand(phoneNumber, user) {
       weatherPreferences: user?.weather_preferences
     };
 
-    // Simular uma análise básica para gerar sugestões contextuais
-    const mockAnalysis = {
-      type: 'suggestions_request',
-      city: userContext.preferredCity || 'Beira',
-      intent: 'gerar_sugestoes_inteligentes',
-      action: 'show_smart_suggestions',
-      expertiseLevel: userContext.expertiseLevel,
-      context: {
-        isCommand: true,
-        timeframe: 'hoje',
-        complexity: userContext.expertiseLevel,
-        weatherAspect: 'geral'
-      }
-    };
-
     // Buscar dados meteorológicos atuais da cidade do usuário
     let weatherData = null;
     const userCity = userContext.preferredCity || userContext.lastCity || 'Maputo';
@@ -312,77 +320,35 @@ async function handleSuggestionsCommand(phoneNumber, user) {
       };
     }
 
-    // Gerar sugestões inteligentes baseadas na temperatura atual usando AI
-    console.log(`🤖 Gerando sugestões baseadas na temperatura de ${weatherData.temperature}°C...`);
-    const aiSuggestions = await openaiService.generateTemperatureBasedSuggestions(
+    // Usar AI para gerar sugestões conversacionais em português moçambicano
+    console.log(`🤖 Gerando sugestões conversacionais com AI baseadas em ${weatherData.temperature}°C...`);
+    const aiSuggestions = await openaiService.generateConversationalSuggestions(
       weatherData,
       userContext
     );
 
-    console.log("Sugestao da AI");
-    await whatsappApi.enviarMensagemCarregamento(phoneNumber, aiSuggestions.suggestions.join(', '));
-
-    await whatsappApi.enviarMensagemCarregamento(phoneNumber, aiSuggestions.suggestions);
-
-    // Criar mensagem personalizada baseada no perfil do usuário
-    let suggestionsMessage = `💡 *Eh pá, aqui tens umas sugestões fixes baseadas no tempo atual!*\n\n`;
-
-    // suggestionsMessage += `🌤️ *Tempo agora em ${weatherData.city}:*\n`;
-    // suggestionsMessage += `• Temperatura: ${weatherData.temperature}°C\n`;
-    // suggestionsMessage += `• Condições: ${weatherData.description}\n`;
-    // suggestionsMessage += `• Humidade: ${weatherData.humidity}%\n\n`;
-
-
-    suggestionsMessage += `🎯 *Sugestões baseadas nos ${weatherData.temperature}°C atuais:*\n`;
-
-    if (aiSuggestions && aiSuggestions.success && aiSuggestions.suggestions && aiSuggestions.suggestions.length > 0) {
-      aiSuggestions.suggestions.forEach((suggestion, index) => {
-        suggestionsMessage += `${index + 1}. ${suggestion}\n`;
-      });
-
-      if (aiSuggestions.reasoning) {
-        suggestionsMessage += `\n💭 *Porquê estas sugestões:*\n${aiSuggestions.reasoning}\n`;
-      }
+    let finalMessage;
+    if (aiSuggestions.success) {
+      finalMessage = aiSuggestions.message;
+      console.log('✅ Sugestões geradas com AI - resposta conversacional');
     } else {
-      // Fallback baseado na temperatura
+      // Fallback natural caso a AI falhe
       const temp = parseInt(weatherData.temperature);
+      finalMessage = `💡 Eh pá, com ${temp}°C em ${weatherData.city} hoje, `;
+
       if (temp > 30) {
-        suggestionsMessage += `1. Dicas para o calor\n`;
-        suggestionsMessage += `2. Atividades refrescantes\n`;
-        suggestionsMessage += `3. Que roupa usar no calor\n`;
-      } else if (temp > 25) {
-        suggestionsMessage += `1. Atividades ao ar livre\n`;
-        suggestionsMessage += `2. Tempo amanhã\n`;
-        suggestionsMessage += `3. Planos para hoje\n`;
-      } else if (temp > 20) {
-        suggestionsMessage += `1. Que roupa vestir\n`;
-        suggestionsMessage += `2. Vai esfriar mais?\n`;
-        suggestionsMessage += `3. Atividades para hoje\n`;
+        finalMessage += `está bem quente! Podes pensar em ir para locais frescos, beber muitos líquidos, e vestir roupa leve. A praia seria fixe! `;
+      } else if (temp > 22) {
+        finalMessage += `está uma temperatura boa! Podes fazer qualquer atividade, sair com amigos, ou simplesmente aproveitar o dia. `;
       } else {
-        suggestionsMessage += `1. Dicas para o frio\n`;
-        suggestionsMessage += `2. Como se aquecer\n`;
-        suggestionsMessage += `3. Roupas quentes\n`;
+        finalMessage += `está fresquinho, então melhor roupas quentes e atividades que te aquecem. Um chá seria bom! `;
       }
+
+      finalMessage += `\n\n🤔 Sobre o que gostarias de saber mais? É só perguntares, meu!`;
+      console.log('⚠️ Usando fallback conversacional');
     }
 
-    // suggestionsMessage += `\n👤 *Teu perfil:*\n`;
-    // const nivelMap = {
-    //   'basic': 'Principiante (tás a começar)',
-    //   'intermediate': 'Médio (já percebes bem)',
-    //   'advanced': 'Experiente (és um expert!)'
-    // };
-    // suggestionsMessage += `• Nível: ${nivelMap[userContext.expertiseLevel] || userContext.expertiseLevel}\n`;
-    // suggestionsMessage += `\n• Consultas feitas: ${userContext.queryCount}\n\n`;
-
-
-    // suggestionsMessage += `\n💬 *Como usar estas sugestões:*\n`;
-    // suggestionsMessage += `• Escreve o número da sugestão (ex: "1")\n`;
-    // suggestionsMessage += `• Ou escreve a sugestão completa\n`;
-    // suggestionsMessage += `• Ou faz qualquer pergunta sobre o tempo\n\n`;
-    // suggestionsMessage += `📱 *Exemplos:* "1" ou "passeio pela cidade" ou "como está o tempo?"\n\n`;
-    // suggestionsMessage += `🔄 *Eh pá:* Quanto mais usares o bot, mais ele aprende contigo e as sugestões ficam melhores!`;
-
-    await whatsappApi.enviarMensagemUsandoWhatsappAPI(suggestionsMessage, phoneNumber);
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(finalMessage, phoneNumber);
 
     // Atualizar contador de consultas
     await saveOrUpdateAdvancedUser(phoneNumber, {
@@ -480,90 +446,150 @@ async function sendInteractiveSuggestionButtons(phoneNumber, suggestions, userCo
   }
 }
 
-async function handleNeighborhoodMenuCommand(phoneNumber, user) {
+async function handleSafetyAdviceCommand(phoneNumber, user) {
   try {
-    console.log(`🏘️ Comando /conselhos acionado para ${phoneNumber}`);
+    console.log(`⚠️ Comando /conselhos (segurança) acionado para ${phoneNumber}`);
 
-    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Eh pá, deixa eu preparar os conselhos para os bairros');
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Eh pá, deixa eu ver que conselhos de segurança posso dar sobre o tempo...');
 
-    // Buscar dados meteorológicos da Beira para contexto
+    // Criar contexto para os conselhos baseado no usuário
+    const userContext = {
+      preferredCity: user?.preferred_city || user?.last_city,
+      lastCity: user?.last_city,
+      queryCount: user?.query_count || 0,
+      expertiseLevel: user?.expertise_level || 'basic'
+    };
+
+    // Buscar dados meteorológicos atuais da cidade do usuário
     let weatherData = null;
+    const userCity = userContext.preferredCity || userContext.lastCity || 'Maputo';
+
     try {
-      weatherData = await weatherService.getCurrentWeather('Beira', user?.units || 'celsius');
+      console.log(`🌤️ Buscando dados meteorológicos para ${userCity}...`);
+      weatherData = await weatherService.getCurrentWeather(userCity, user?.units || 'celsius');
+      console.log(`📊 Dados obtidos: ${weatherData.temperature}°C em ${weatherData.city}`);
     } catch (error) {
-      console.log('⚠️ Erro ao buscar dados meteorológicos da Beira:', error.message);
+      console.log('⚠️ Erro ao buscar dados meteorológicos, usando fallback:', error.message);
+      weatherData = {
+        city: userCity,
+        temperature: 25,
+        description: 'Tempo normal',
+        humidity: 60,
+        units: '°C'
+      };
     }
 
-    // Criar mensagem contextual baseada no clima atual
-    let conselhosMessage = `🏘️ *Eee mano, conselhos por bairro aqui na Beira!*\n\n`;
+    // Usar AI para gerar conselhos de segurança em português moçambicano
+    console.log(`🤖 Gerando conselhos de segurança com AI baseados em ${weatherData.temperature}°C...`);
+    const safetyAdvice = await openaiService.generateSafetyAdvice(
+      weatherData,
+      userContext
+    );
 
-    if (weatherData && !weatherData.error) {
-      conselhosMessage += `🌤️ *Como está o tempo agora na nossa cidade:*\n`;
-      conselhosMessage += `🌡️ Temperatura: ${weatherData.temperature}°C`;
-
+    let finalMessage;
+    if (safetyAdvice.success) {
+      finalMessage = safetyAdvice.message;
+      console.log('✅ Conselhos de segurança gerados com AI');
+    } else {
+      // Fallback natural caso a AI falhe
       const temp = parseInt(weatherData.temperature);
-      if (temp > 30) {
-        conselhosMessage += ` (eish, está quente!)\n`;
-      } else if (temp < 18) {
-        conselhosMessage += ` (está frio hoje)\n`;
+      finalMessage = `⚠️ Eh pá, com ${temp}°C em ${weatherData.city}, `;
+
+      if (temp > 32) {
+        finalMessage += `está muito perigoso! O calor pode causar desidratação e insolação. Bebe muita água mesmo que não tenhas sede, procura sombra e evita o sol forte. Se sentires tontura ou náusea, pede ajuda imediatamente! `;
+      } else if (temp > 25) {
+        finalMessage += `já precisas de cuidados com o calor. Usa protetor solar, bebe água regularmente e evita ficar muito tempo ao sol. `;
+      } else if (temp < 15) {
+        finalMessage += `está frio e podes ter problemas com o frio. Veste-te bem em camadas, protege as extremidades e evita ficar molhado. `;
       } else {
-        conselhosMessage += ` (está fixe)\n`;
+        finalMessage += `a temperatura está boa, mas sempre mantém cuidados básicos como hidratação e protecção quando saires. `;
       }
 
-      conselhosMessage += `💧 Umidade: ${weatherData.humidity}%\n`;
-      conselhosMessage += `📝 ${weatherData.description}\n\n`;
+      finalMessage += `\n\nLembra-te: é sempre melhor prevenir que remediar, meu! 💪`;
+      console.log('⚠️ Usando fallback de segurança conversacional');
     }
 
-    conselhosMessage += `💡 *Escolhe um bairro para receber dicas específicas conforme o tempo de hoje:*\n\n`;
-
-    conselhosMessage += `📍 *Bairros que conheço bem:*\n`;
-    conselhosMessage += `• Macúti - Zona da praia e hotéis\n`;
-    conselhosMessage += `• Manga - Centro da cidade\n`;
-    conselhosMessage += `• Goto - Bairro residencial\n`;
-    conselhosMessage += `• Munhava - Bairro bem movimentado\n`;
-    conselhosMessage += `• Chaimite - Bairro grande\n`;
-    conselhosMessage += `• Ndunda - Zona nova em crescimento\n`;
-    conselhosMessage += `• Cidade de Cimento - Centro histórico\n`;
-    conselhosMessage += `• Palmeiras - Zona mista\n\n`;
-
-    if (weatherData && !weatherData.error) {
-      const temp = parseInt(weatherData.temperature);
-      const isRaining = weatherData.description.toLowerCase().includes('chuva');
-
-      if (isRaining) {
-        conselhosMessage += `⚠️ *Atenção:* Está chovendo! Alguns bairros podem ter riscos específicos.\n`;
-      } else if (temp > 30) {
-        conselhosMessage += `🔥 *Atenção:* Calor intenso! Cuidados especiais recomendados.\n`;
-      } else if (temp < 20) {
-        conselhosMessage += `🧊 *Atenção:* Tempo fresco! Vista-se adequadamente.\n`;
-      }
-    }
-
-    conselhosMessage += `\n💬 *Como usar:*\n`;
-    conselhosMessage += `Digite: "conselhos para [bairro]"\n`;
-    conselhosMessage += `Exemplo: "conselhos para Macúti"\n\n`;
-    conselhosMessage += `� *Bairros disponíveis:*\n`;
-    conselhosMessage += `• Macúti, Manga, Goto, Munhava\n`;
-    conselhosMessage += `• Chaimite, Ndunda, Palmeiras\n`;
-    conselhosMessage += `• Cidade de Cimento, Ponta-Gêa`;
-
-    await whatsappApi.enviarMensagemUsandoWhatsappAPI(conselhosMessage, phoneNumber);
-
-    // Enviar mensagem interativa com bairros disponíveis
-    await sendNeighborhoodSelectionButtons(phoneNumber);
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(finalMessage, phoneNumber);
 
     // Atualizar contador de consultas
     await saveOrUpdateAdvancedUser(phoneNumber, {
-      query_count: (user?.query_count || 0) + 1,
+      query_count: (userContext.queryCount || 0) + 1,
       last_command: '/conselhos'
     });
 
-    return conselhosMessage;
+    return finalMessage;
 
   } catch (error) {
     console.error('❌ Erro ao processar comando /conselhos:', error);
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      "❌ Não consegui carregar o menu de conselhos agora. Tenta mais tarde.\n\n💡 Podes sempre perguntar directamente: \"conselhos para [bairro]\"",
+      "❌ Eh pá, não consegui gerar os conselhos agora. Tenta mais tarde!",
+      phoneNumber
+    );
+    return null;
+  }
+}
+
+async function handleSafetyAdvice(analysis, phoneNumber, user) {
+  try {
+    const { city, context, originalMessage } = analysis;
+    const targetCity = city || user?.preferred_city || user?.last_city;
+
+    if (!targetCity) {
+      await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+        "🏙️ Eh pá, para dar conselhos de segurança preciso saber a cidade. Qual cidade te interessa?",
+        phoneNumber
+      );
+      return null;
+    }
+
+    // Buscar dados atuais do clima
+    const weatherData = await weatherService.getCurrentWeather(targetCity, user?.units || 'celsius');
+
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, `Deixa eu ver que cuidados específicos precisas ter em ${targetCity}...`);
+
+    // Usar AI para gerar conselhos de segurança
+    const safetyResponse = await openaiService.generateSafetyAdvice(
+      weatherData,
+      {
+        ...user,
+        queryCount: user?.query_count || 0,
+        expertiseLevel: user?.expertise_level || 'basic'
+      }
+    );
+
+    let finalMessage;
+    if (safetyResponse.success) {
+      finalMessage = safetyResponse.message;
+    } else {
+      // Fallback básico de segurança
+      const temp = parseInt(weatherData.temperature);
+      finalMessage = `⚠️ Conselhos importantes para ${targetCity}:\n\n`;
+
+      if (temp > 30) {
+        finalMessage += `Com ${temp}°C está muito quente! Cuidado com desidratação - bebe água regularmente, usa protetor solar e procura sombra.`;
+      } else if (temp < 18) {
+        finalMessage += `Com ${temp}°C está frio! Veste-te bem para evitar hipotermia e mantém-te seco.`;
+      } else {
+        finalMessage += `Temperatura de ${temp}°C é boa, mas mantém sempre cuidados básicos de segurança.`;
+      }
+
+      finalMessage += `\n\nCuida-te sempre, meu! 💪`;
+    }
+
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(finalMessage, phoneNumber);
+
+    // Salvar no histórico
+    await saveOrUpdateAdvancedUser(phoneNumber, {
+      last_city: targetCity,
+      query_count: (user?.query_count || 0) + 1
+    });
+
+    return finalMessage;
+
+  } catch (error) {
+    console.error('❌ Erro ao gerar conselhos de segurança:', error);
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      "❌ Não consegui gerar conselhos de segurança agora. Tenta mais tarde.",
       phoneNumber
     );
     return null;
@@ -927,7 +953,7 @@ async function handlePracticalTips(analysis, phoneNumber, user) {
 
     if (!targetCity) {
       await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-        "🏙️ Para dar dicas específicas, preciso saber a cidade. Qual cidade te interessa?",
+        "🏙️ Eh pá, para dar dicas fixes preciso saber a cidade. Qual cidade te interessa?",
         phoneNumber
       );
       return null;
@@ -936,25 +962,28 @@ async function handlePracticalTips(analysis, phoneNumber, user) {
     // Buscar dados atuais do clima
     const weatherData = await weatherService.getCurrentWeather(targetCity, user?.units || 'celsius');
 
-    let tipMessage = `💡 *Dicas para ${targetCity}*\n\n`;
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, `Eh pá, deixa eu ver umas dicas fixes para ti sobre ${targetCity}...`);
 
-    // Identificar que tipo de dica foi solicitada
-    const message = originalMessage?.toLowerCase() || '';
+    // Usar AI para gerar dicas naturais em português moçambicano
+    const tipsResponse = await openaiService.generatePracticalTips(
+      analysis,
+      weatherData,
+      {
+        ...user,
+        queryCount: user?.query_count || 0,
+        expertiseLevel: user?.expertise_level || 'basic'
+      }
+    );
 
-    if (message.includes('roupa') || message.includes('vestir')) {
-      tipMessage += generateClothingTips(weatherData);
-    } else if (message.includes('calor') || message.includes('frio')) {
-      tipMessage += generateTemperatureTips(weatherData);
-    } else if (message.includes('chuva') || message.includes('guarda-chuva')) {
-      tipMessage += generateRainTips(weatherData);
-    } else if (message.includes('atividade') || message.includes('exerc')) {
-      tipMessage += generateActivityTips(weatherData);
+    let finalMessage;
+    if (tipsResponse.success) {
+      finalMessage = tipsResponse.message;
     } else {
-      // Dicas gerais baseadas no clima atual
-      tipMessage += generateGeneralTips(weatherData);
+      // Fallback usando resposta básica mais natural
+      finalMessage = generateNaturalFallbackTips(weatherData, targetCity, originalMessage);
     }
 
-    await whatsappApi.enviarMensagemUsandoWhatsappAPI(tipMessage, phoneNumber);
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(finalMessage, phoneNumber);
 
     // Salvar no histórico
     await saveOrUpdateAdvancedUser(phoneNumber, {
@@ -962,12 +991,12 @@ async function handlePracticalTips(analysis, phoneNumber, user) {
       query_count: (user?.query_count || 0) + 1
     });
 
-    return tipMessage;
+    return finalMessage;
 
   } catch (error) {
     console.error('❌ Erro ao gerar dicas práticas:', error);
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      "❌ Não consegui gerar dicas agora. Tenta mais tarde.",
+      "❌ Eish, não consegui gerar dicas agora. Tenta mais tarde, meu!",
       phoneNumber
     );
     return null;
@@ -2517,4 +2546,91 @@ function analyzeRainProbability(weatherData, isForTomorrow) {
     message,
     advice
   };
+}
+
+// ===============================================
+// FUNÇÃO DE FALLBACK PARA DICAS NATURAIS
+// ===============================================
+
+function generateNaturalFallbackTips(weatherData, city, originalMessage) {
+  const temp = parseInt(weatherData.temperature);
+  const isRaining = weatherData.description.toLowerCase().includes('chuva');
+  const message = (originalMessage || '').toLowerCase();
+
+  let response = `💡 *Eh pá, aqui tens umas dicas fixes para ${city}!*\n\n`;
+
+  response += `🌤️ *Como está agora:* ${temp}°C - ${weatherData.description}\n\n`;
+
+  // Determinar tipo de dica baseado na mensagem
+  if (message.includes('roupa') || message.includes('vestir')) {
+    response += `👕 *Sobre o que vestir:*\n`;
+    if (temp > 30) {
+      response += `Eish, com ${temp}°C está bem quente! Veste roupa leve e clara, meu. Algodão é fixe porque respira bem. E não te esqueças do protetor solar!`;
+    } else if (temp > 25) {
+      response += `Com ${temp}°C está uma temperatura boa! Camiseta e shorts está bem. Se fores sair à noite, leva um casaquinho leve só por garantia.`;
+    } else if (temp > 18) {
+      response += `${temp}°C está fresquinho hoje! Calça leve e uma blusa está bem. Melhor levar um casaquinho porque pode esfriar mais tarde.`;
+    } else {
+      response += `Eish, ${temp}°C está frio mesmo! Vista roupa por camadas - camiseta, sweatshirt e casaco. Calça comprida e sapato fechado é o ideal.`;
+    }
+  } else if (message.includes('atividade') || message.includes('fazer')) {
+    response += `🏃 *O que fazer hoje:*\n`;
+    if (isRaining) {
+      response += `Está chuva, então melhor ficar em casa ou ir para locais cobertos. Que tal cinema, shopping ou visitar amigos?`;
+    } else if (temp > 30) {
+      response += `Com ${temp}°C evita o sol forte das 10h às 16h. De manhã cedo ou fim da tarde é fixe para sair. Vai para lugares com sombra!`;
+    } else if (temp > 20) {
+      response += `Temperatura perfeita para qualquer coisa! Podes sair, fazer exercício, visitar amigos, ir ao parque... Aproveita!`;
+    } else {
+      response += `Está frio com ${temp}°C, então actividades mais tranquilas. Café com amigos, cinema, ou ficar em casa a relaxar está bem.`;
+    }
+  } else {
+    // Dicas gerais
+    response += `🎯 *Dicas gerais para hoje:*\n`;
+    if (isRaining) {
+      response += `Está chuva, então leva guarda-chuva e sapato que não escorrega. Se puderes, fica em casa relaxando.`;
+    } else if (temp > 30) {
+      response += `Calor de ${temp}°C - bebe muita água, usa roupa leve e evita o sol forte. Procura sombra sempre!`;
+    } else if (temp > 20) {
+      response += `${temp}°C está uma temperatura boa! Aproveita para sair e fazer o que gostas. Tempo perfeito!`;
+    } else {
+      response += `Com ${temp}°C está frio, então aquece-te bem. Roupa quente, bebidas quentes e actividades que te aquecem.`;
+    }
+  }
+
+  if (isRaining) {
+    response += `\n\n☔ *Atenção:* Está chuva - leva guarda-chuva e cuidado com o chão molhado!`;
+  }
+
+  return response;
+}
+
+// ===============================================
+// APRESENTAÇÃO COMPLETA DA JOANA BOT
+// ===============================================
+
+async function handleJoanaBotIntroduction(phoneNumber, user) {
+  try {
+    console.log(`🤖 Comando /joana acionado para ${phoneNumber}`);
+
+    const introMessage = openaiService.getIntroductionMessage(true);
+
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(introMessage, phoneNumber);
+
+    // Atualizar contador de consultas
+    await saveOrUpdateAdvancedUser(phoneNumber, {
+      query_count: (user?.query_count || 0) + 1,
+      last_command: '/joana'
+    });
+
+    return introMessage;
+
+  } catch (error) {
+    console.error('❌ Erro ao processar comando /joana:', error);
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      '❌ Eish, algo deu errado! Sou a Joana Bot, tenta novamente.',
+      phoneNumber
+    );
+    return null;
+  }
 }
