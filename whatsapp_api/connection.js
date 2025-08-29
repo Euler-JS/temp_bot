@@ -825,6 +825,107 @@ class WhatsAppApi {
         return await this.enviarMensagemInterativaUsandoWhatsappAPI(configMenu);
     }
 
+    // **NOVO** - Lista de opções de interesse após sugestões
+    async enviarListaInteresseAposSugestoes(numeroCelular, weatherData) {
+        const temp = parseInt(weatherData.temperature);
+        const city = weatherData.city;
+
+        // Gerar opções baseadas no clima atual
+        let opcoes = [];
+
+        // Opções sempre disponíveis
+        opcoes.push(
+            {
+                id: "previsao_7_dias",
+                title: "📅 Previsão 7 Dias",
+                description: `Como será o tempo em ${city} na próxima semana`
+            },
+            {
+                id: "conselhos_roupa",
+                title: "👕 Que Roupa Vestir",
+                description: `Dicas de vestuário para ${temp}°C`
+            },
+            {
+                id: "atividades_clima",
+                title: "🎯 Atividades Ideais",
+                description: `O que fazer com este tempo em ${city}`
+            }
+        );
+
+        // Opções específicas baseadas na temperatura
+        if (temp > 30) {
+            opcoes.push({
+                id: "dicas_calor",
+                title: "🌞 Dicas para o Calor",
+                description: "Como se refrescar e se proteger"
+            });
+        } else if (temp < 20) {
+            opcoes.push({
+                id: "dicas_frio",
+                title: "🧥 Dicas para o Frio",
+                description: "Como se aquecer e se proteger"
+            });
+        }
+
+        if (weatherData.condition && weatherData.condition.includes('chuva')) {
+            opcoes.push({
+                id: "dicas_chuva",
+                title: "☔ Dicas para Chuva",
+                description: "Como se preparar para a chuva"
+            });
+        }
+
+        // Sempre adicionar algumas opções educativas
+        opcoes.push(
+            {
+                id: "explicar_meteorologia",
+                title: "🌡️ Como Funciona o Clima",
+                description: "Aprende sobre meteorologia"
+            },
+            {
+                id: "alertas_clima",
+                title: "🚨 Alertas Meteorológicos",
+                description: "Configurar notificações automáticas"
+            }
+        );
+
+        // Limitar a 8 opções máximo
+        opcoes = opcoes.slice(0, 8);
+
+        const sections = [
+            {
+                title: "💡 O que te interessa?",
+                rows: opcoes
+            }
+        ];
+
+        const interestMenu = {
+            messaging_product: 'whatsapp',
+            recipient_type: "individual",
+            to: numeroCelular,
+            type: "interactive",
+            interactive: {
+                type: "list",
+                header: {
+                    type: "text",
+                    text: "🤔 O que te interessa?"
+                },
+                body: {
+                    text: `Eh pá, baseado no tempo atual em ${city} (${temp}°C), aqui tens algumas coisas interessantes que podes descobrir:`
+                },
+                footer: {
+                    text: "Joana Bot - Sempre aqui para ajudar! 🌤️"
+                },
+                action: {
+                    button: "Ver Opções",
+                    sections: sections
+                }
+            }
+        };
+
+        return await this.enviarMensagemInterativaUsandoWhatsappAPI(interestMenu);
+    }
+
     // **UTILITÁRIOS AUXILIARES**
 
     getContextualDescription(sugestao, contexto) {

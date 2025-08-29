@@ -350,6 +350,17 @@ async function handleSuggestionsCommand(phoneNumber, user) {
 
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(finalMessage, phoneNumber);
 
+    // **NOVO** - Após enviar sugestões, enviar lista interativa de opções de interesse
+    console.log('📋 Enviando lista de opções de interesse...');
+    setTimeout(async () => {
+      try {
+        await whatsappApi.enviarListaInteresseAposSugestoes(phoneNumber, weatherData);
+        console.log('✅ Lista de opções de interesse enviada com sucesso');
+      } catch (error) {
+        console.error('❌ Erro ao enviar lista de opções:', error.message);
+      }
+    }, 1500); // Aguardar 1.5 segundos para não sobrecarregar
+
     // Atualizar contador de consultas
     await saveOrUpdateAdvancedUser(phoneNumber, {
       query_count: (userContext.queryCount || 0) + 1,
@@ -2028,10 +2039,346 @@ async function processAdvancedInteractiveMessage(interactive, phoneNumber) {
 
   if (interactive.type === "list_reply") {
     const listId = interactive.list_reply.id;
+    const listTitle = interactive.list_reply.title;
 
-    // Processar como texto normal
-    await processAdvancedTextMessage(listId, phoneNumber);
+    console.log(`📋 Lista selecionada: ${listId} - ${listTitle}`);
+
+    // Handlers para as opções de interesse após sugestões
+    switch (listId) {
+      case "previsao_7_dias":
+        await handleForecastRequest(phoneNumber, 7);
+        break;
+
+      case "conselhos_roupa":
+        await handleClothingAdviceRequest(phoneNumber);
+        break;
+
+      case "atividades_clima":
+        await handleActivitySuggestionsRequest(phoneNumber);
+        break;
+
+      case "dicas_calor":
+        await handleHeatTipsRequest(phoneNumber);
+        break;
+
+      case "dicas_frio":
+        await handleColdTipsRequest(phoneNumber);
+        break;
+
+      case "dicas_chuva":
+        await handleRainTipsRequest(phoneNumber);
+        break;
+
+      case "explicar_meteorologia":
+        await handleMeteorologicalEducationRequest(phoneNumber);
+        break;
+
+      case "alertas_clima":
+        await handleWeatherAlertsSetupRequest(phoneNumber);
+        break;
+
+      default:
+        // Processar como texto normal para compatibilidade
+        await processAdvancedTextMessage(listId, phoneNumber);
+    }
   }
+}
+
+// ===============================================
+// HANDLERS PARA OPÇÕES DE INTERESSE
+// ===============================================
+
+async function handleForecastRequest(phoneNumber, days = 7) {
+  try {
+    console.log(`📅 Solicitação de previsão de ${days} dias para ${phoneNumber}`);
+
+    const user = await getUserByPhone(phoneNumber);
+    const city = user?.preferred_city || user?.last_city || 'Maputo';
+
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, `🔍 Eh pá, deixa ver a previsão de ${days} dias para ${city}...`);
+
+    const forecastData = await weatherService.getForecast(city, days);
+
+    if (forecastData && forecastData.length > 0) {
+      let forecastMessage = `📅 *Previsão de ${days} dias para ${city}*\n\n`;
+
+      forecastData.slice(0, days).forEach((day, index) => {
+        const emoji = getWeatherEmoji(day.description);
+        const date = new Date();
+        date.setDate(date.getDate() + index);
+        const dayName = index === 0 ? 'Hoje' : index === 1 ? 'Amanhã' : date.toLocaleDateString('pt-MZ', { weekday: 'long' });
+
+        forecastMessage += `${emoji} *${dayName}*\n`;
+        forecastMessage += `   🌡️ ${day.min_temp}°C - ${day.max_temp}°C\n`;
+        forecastMessage += `   ${day.description}\n`;
+        if (day.rain_probability > 30) {
+          forecastMessage += `   ☔ ${day.rain_probability}% chance de chuva\n`;
+        }
+        forecastMessage += `\n`;
+      });
+
+      forecastMessage += `\n💡 *Dica da Joana Bot:* Planifica as tuas atividades baseado nesta previsão!`;
+
+      await whatsappApi.enviarMensagemUsandoWhatsappAPI(forecastMessage, phoneNumber);
+    } else {
+      await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+        `❌ Eh pá, não consegui obter a previsão para ${city}. Tenta novamente mais tarde.`,
+        phoneNumber
+      );
+    }
+  } catch (error) {
+    console.error('❌ Erro ao processar previsão:', error);
+    await whatsappApi.enviarMensagemErro(phoneNumber, "Erro ao obter previsão");
+  }
+}
+
+async function handleClothingAdviceRequest(phoneNumber) {
+  try {
+    console.log(`👕 Solicitação de conselhos de roupa para ${phoneNumber}`);
+
+    const user = await getUserByPhone(phoneNumber);
+    const city = user?.preferred_city || user?.last_city || 'Maputo';
+
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Eh pá, deixa ver que roupa é melhor para hoje...');
+
+    const weatherData = await weatherService.getCurrentWeather(city);
+    const temp = parseInt(weatherData.temperature);
+
+    let clothingAdvice = `👕 *Conselhos de Roupa para ${city}*\n\n`;
+    clothingAdvice += `🌡️ Temperatura atual: ${temp}°C\n`;
+    clothingAdvice += `🌤️ Condição: ${weatherData.description}\n\n`;
+
+    if (temp > 30) {
+      clothingAdvice += `🌞 *Está bem quente!*\n`;
+      clothingAdvice += `✅ Usa roupas leves e cores claras\n`;
+      clothingAdvice += `✅ Tecidos respiráveis como algodão\n`;
+      clothingAdvice += `✅ Não esqueças o chapéu e óculos de sol\n`;
+      clothingAdvice += `✅ Protetor solar é obrigatório!`;
+    } else if (temp > 25) {
+      clothingAdvice += `☀️ *Temperatura agradável!*\n`;
+      clothingAdvice += `✅ Roupa casual e confortável\n`;
+      clothingAdvice += `✅ Camiseta ou camisa leve\n`;
+      clothingAdvice += `✅ Calças finas ou bermudas\n`;
+      clothingAdvice += `✅ Ténis ou sapatos frescos`;
+    } else if (temp > 20) {
+      clothingAdvice += `🌤️ *Clima fresquinho!*\n`;
+      clothingAdvice += `✅ Camisa de manga comprida\n`;
+      clothingAdvice += `✅ Calças normais\n`;
+      clothingAdvice += `✅ Pode levar uma jaqueta leve\n`;
+      clothingAdvice += `✅ Sapatos fechados`;
+    } else {
+      clothingAdvice += `🧥 *Está fresco hoje!*\n`;
+      clothingAdvice += `✅ Jaqueta ou casaco\n`;
+      clothingAdvice += `✅ Roupa em camadas\n`;
+      clothingAdvice += `✅ Calças compridas\n`;
+      clothingAdvice += `✅ Sapatos fechados e meias`;
+    }
+
+    if (weatherData.description.includes('chuva')) {
+      clothingAdvice += `\n\n☔ *Vai chover!*\n`;
+      clothingAdvice += `✅ Leva guarda-chuva\n`;
+      clothingAdvice += `✅ Sapatos impermeáveis\n`;
+      clothingAdvice += `✅ Casaco resistente à água`;
+    }
+
+    clothingAdvice += `\n\n💡 *Dica da Joana Bot:* Sempre verifica o tempo antes de sair de casa!`;
+
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(clothingAdvice, phoneNumber);
+  } catch (error) {
+    console.error('❌ Erro ao processar conselhos de roupa:', error);
+    await whatsappApi.enviarMensagemErro(phoneNumber, "Erro ao obter conselhos de roupa");
+  }
+}
+
+async function handleActivitySuggestionsRequest(phoneNumber) {
+  try {
+    console.log(`🎯 Solicitação de atividades ideais para ${phoneNumber}`);
+
+    const user = await getUserByPhone(phoneNumber);
+    const userContext = {
+      preferredCity: user?.preferred_city || user?.last_city,
+      expertiseLevel: user?.expertise_level || 'basic'
+    };
+
+    // Usar AI para gerar sugestões de atividades baseadas no clima
+    const suggestions = await openaiService.generateConversationalSuggestions(
+      await weatherService.getCurrentWeather(userContext.preferredCity || 'Maputo'),
+      userContext
+    );
+
+    if (suggestions.success) {
+      await whatsappApi.enviarMensagemUsandoWhatsappAPI(suggestions.message, phoneNumber);
+    } else {
+      await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+        '❌ Eh pá, não consegui gerar sugestões agora. Tenta mais tarde.',
+        phoneNumber
+      );
+    }
+  } catch (error) {
+    console.error('❌ Erro ao processar sugestões de atividades:', error);
+    await whatsappApi.enviarMensagemErro(phoneNumber, "Erro ao obter sugestões");
+  }
+}
+
+async function handleHeatTipsRequest(phoneNumber) {
+  const heatTips = `🌞 *Dicas para Dias Quentes*
+
+🚰 *Hidratação:*
+• Bebe muita água (pelo menos 8 copos)
+• Evita bebidas alcoólicas e com cafeína
+• Come frutas com água (melancia, laranja)
+
+🏠 *Em Casa:*
+• Fica em locais com sombra ou ar condicionado
+• Usa ventoinhas para circular o ar
+• Fecha cortinas durante o dia
+
+🚶 *Ao Sair:*
+• Evita o sol das 11h às 15h
+• Usa protetor solar FPS 30+
+• Chapéu, óculos escuros obrigatórios
+• Roupas leves e cores claras
+
+⚠️ *Sinais de Alerta:*
+• Dor de cabeça intensa
+• Náuseas ou tonturas
+• Pele muito vermelha e quente
+
+💡 *Dica da Joana Bot:* Se sentires mal-estar, procura sombra e bebe água imediatamente!`;
+
+  await whatsappApi.enviarMensagemUsandoWhatsappAPI(heatTips, phoneNumber);
+}
+
+async function handleColdTipsRequest(phoneNumber) {
+  const coldTips = `🧥 *Dicas para Dias Frios*
+
+👕 *Roupa Adequada:*
+• Veste roupas em camadas
+• Tecidos que mantêm calor (lã, algodão)
+• Não esqueças gorro, luvas e cachecol
+• Sapatos fechados e meias quentes
+
+🏠 *Em Casa:*
+• Fecha janelas e portas
+• Usa cobertores extras
+• Bebe bebidas quentes (chá, café)
+• Come alimentos quentes
+
+🚶 *Ao Sair:*
+• Protege extremidades (mãos, pés, orelhas)
+• Evita ficar muito tempo ao ar livre
+• Mantém-te em movimento
+• Leva sempre casaco extra
+
+⚠️ *Cuidados Especiais:*
+• Idosos e crianças precisam mais proteção
+• Atenção a hipotermia
+• Aquece o carro antes de sair
+
+💡 *Dica da Joana Bot:* Uma sopa quente é sempre boa ideia em dias frios!`;
+
+  await whatsappApi.enviarMensagemUsandoWhatsappAPI(coldTips, phoneNumber);
+}
+
+async function handleRainTipsRequest(phoneNumber) {
+  const rainTips = `☔ *Dicas para Dias de Chuva*
+
+🌂 *Equipamentos:*
+• Sempre leva guarda-chuva
+• Casaco impermeável ou capa de chuva
+• Sapatos com sola antiderrapante
+• Mochila com proteção para documentos
+
+🚗 *No Trânsito:*
+• Reduz velocidade
+• Aumenta distância de segurança
+• Liga faróis mesmo de dia
+• Evita poças grandes
+
+🏠 *Em Casa:*
+• Verifica se há goteiras
+• Protege equipamentos eletrônicos
+• Tem lanternas carregadas
+• Mantém comida e água reserva
+
+⚠️ *Segurança:*
+• Evita áreas alagadas
+• Não toques em fios elétricos molhados
+• Fica longe de árvores grandes
+• Se houver trovoada, fica dentro de casa
+
+💡 *Dica da Joana Bot:* Chuva pode ser relaxante! Aproveita para ler ou ver um filme.`;
+
+  await whatsappApi.enviarMensagemUsandoWhatsappAPI(rainTips, phoneNumber);
+}
+
+async function handleMeteorologicalEducationRequest(phoneNumber) {
+  const educationInfo = `🌡️ *Como Funciona o Clima?*
+
+☀️ *O Sol é o Motor:*
+• Aquece diferentemente a Terra
+• Cria diferenças de pressão
+• Gera ventos e nuvens
+
+🌊 *Ciclo da Água:*
+• Evaporação dos oceanos
+• Formação de nuvens
+• Precipitação (chuva)
+• Volta aos oceanos
+
+🌪️ *Tipos de Tempo:*
+• **Alta Pressão:** Tempo estável, céu limpo
+• **Baixa Pressão:** Chuva, nuvens, vento
+• **Frentes:** Mudanças bruscas no tempo
+
+📊 *Instrumentos:*
+• **Termômetro:** Mede temperatura
+• **Barómetro:** Mede pressão atmosférica
+• **Anemômetro:** Mede velocidade do vento
+• **Pluviómetro:** Mede quantidade de chuva
+
+🌍 *Em Moçambique:*
+• Clima tropical com duas estações
+• Época seca: maio a outubro
+• Época chuvosa: novembro a abril
+• Ciclones: dezembro a março
+
+💡 *Dica da Joana Bot:* Compreender o clima ajuda-te a planificar melhor o teu dia!`;
+
+  await whatsappApi.enviarMensagemUsandoWhatsappAPI(educationInfo, phoneNumber);
+}
+
+async function handleWeatherAlertsSetupRequest(phoneNumber) {
+  const alertsInfo = `🚨 *Alertas Meteorológicos*
+
+📱 *O que posso fazer:*
+• Avisar sobre chuva forte
+• Alertar sobre temperaturas extremas
+• Notificar sobre ciclones
+• Lembrar de levar guarda-chuva
+
+⏰ *Configurações Disponíveis:*
+• Alertas matinais (07:00)
+• Alertas antes de sair (16:00)
+• Emergências (tempo real)
+
+🔧 *Para Configurar:*
+1. Envia: "/alertas configurar"
+2. Escolhe teus horários
+3. Define tipos de alertas
+4. Confirma configuração
+
+⚡ *Alertas de Emergência:*
+• Ciclones (automático)
+• Chuvas torrenciais
+• Ondas de calor
+• Ventos fortes
+
+💡 *Dica da Joana Bot:* Alertas podem salvar o teu dia! Nunca mais serás apanhado de surpresa pela chuva.
+
+🎯 *Quer configurar agora?* Envia "/alertas" para começar!`;
+
+  await whatsappApi.enviarMensagemUsandoWhatsappAPI(alertsInfo, phoneNumber);
 }
 
 async function processLocationMessage(location, phoneNumber) {
