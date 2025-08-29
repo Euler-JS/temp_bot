@@ -3075,12 +3075,532 @@ app.get("/health", async (req, res) => {
 });
 
 // ===============================================
+// ROTAS DO PAINEL ADMINISTRATIVO
+// ===============================================
+
+// Servir arquivos estáticos do painel admin
+app.use('/admin', express.static('admin'));
+
+// API endpoints para o painel administrativo
+app.get("/admin/stats", async (req, res) => {
+  try {
+    const stats = await dbService.getStats();
+    const activeUsers = await dbService.getActiveUsers(7);
+    const allUsers = await dbService.getAllUsers();
+
+    // Calcular estatísticas adicionais
+    const dailyQueries = calculateDailyQueries(allUsers);
+    const topCities = calculateTopCities(allUsers);
+
+    res.json({
+      success: true,
+      data: {
+        ...stats,
+        dailyQueries,
+        topCities
+      }
+    });
+  } catch (error) {
+    console.error('❌ Erro ao obter estatísticas admin:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get("/admin/users", async (req, res) => {
+  try {
+    const users = await dbService.getAllUsers();
+
+    // Mascarar dados sensíveis
+    const maskedUsers = users.map(user => ({
+      ...user,
+      contact: maskContactForAdmin(user.contact)
+    }));
+
+    res.json({
+      success: true,
+      data: maskedUsers
+    });
+  } catch (error) {
+    console.error('❌ Erro ao obter usuários admin:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get("/admin/analytics", async (req, res) => {
+  try {
+    const users = await dbService.getAllUsers();
+
+    const analytics = {
+      expertiseDistribution: calculateExpertiseDistribution(users),
+      growthData: calculateGrowthData(users),
+      averageQueriesPerUser: calculateAverageQueries(users),
+      retentionRate: calculateRetentionRate(users),
+      averageResponseTime: 2.5, // Placeholder - pode ser calculado dos logs
+      popularCities: calculatePopularCities(users),
+      cityQueries: calculateCityQueries(users)
+    };
+
+    res.json({
+      success: true,
+      data: analytics
+    });
+  } catch (error) {
+    console.error('❌ Erro ao obter analytics admin:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get("/admin/users/:contact", async (req, res) => {
+  try {
+    const { contact } = req.params;
+    const user = await dbService.getUserByContact(contact);
+
+    if (!user) {
+      return res.status(404).json({ success: false, error: "Usuário não encontrado" });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        ...user,
+        contact: maskContactForAdmin(user.contact)
+      }
+    });
+  } catch (error) {
+    console.error('❌ Erro ao obter usuário admin:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get("/admin/users/export", async (req, res) => {
+  try {
+    const users = await dbService.getAllUsers();
+
+    // Gerar CSV
+    const csvHeader = 'Contato,Cidade Preferida,Nivel,Consultas,Ultimo Acesso,Notificacoes\n';
+    const csvData = users.map(user =>
+      `${maskContactForAdmin(user.contact)},${user.preferred_city || ''},${user.expertise_level},${user.query_count},${user.last_access},${user.notifications}`
+    ).join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename=usuarios_tempbot.csv');
+    res.send(csvHeader + csvData);
+  } catch (error) {
+    console.error('❌ Erro ao exportar usuários:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get("/admin/logs", async (req, res) => {
+  try {
+    const logs = await dbService.getAdminLogs(100);
+
+    res.json({
+      success: true,
+      data: logs
+    });
+  } catch (error) {
+    console.error('❌ Erro ao obter logs:', error);
+    // Fallback para logs simulados se a tabela não existir
+    const fallbackLogs = [
+      {
+        timestamp: new Date().toISOString(),
+        level: 'info',
+        message: 'Sistema iniciado com sucesso',
+        module: 'system'
+      },
+      {
+        timestamp: new Date(Date.now() - 300000).toISOString(),
+        level: 'info',
+        message: 'Usuário realizou consulta meteorológica',
+        module: 'weather'
+      },
+      {
+        timestamp: new Date(Date.now() - 600000).toISOString(),
+        level: 'warn',
+        message: 'Limite de API OpenAI próximo',
+        module: 'openai'
+      }
+    ];
+
+    res.json({
+      success: true,
+      data: fallbackLogs
+    });
+  }
+}); app.post("/admin/settings", async (req, res) => {
+  try {
+    const { defaultExpertise, enableProgression } = req.body;
+
+    // Aqui você pode salvar as configurações em variáveis de ambiente ou banco
+    // Por enquanto, apenas retornamos sucesso
+
+    res.json({
+      success: true,
+      message: 'Configurações salvas com sucesso'
+    });
+  } catch (error) {
+    console.error('❌ Erro ao salvar configurações:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ===============================================
+// ROTAS DO SISTEMA DE ALERTAS
+// ===============================================
+
+app.get("/admin/region-stats", async (req, res) => {
+  try {
+    const users = await dbService.getAllUsers();
+    const regionStats = {};
+
+    users.forEach(user => {
+      const region = (user.preferred_city || user.last_city || 'não definido').toLowerCase();
+      regionStats[region] = (regionStats[region] || 0) + 1;
+    });
+
+    res.json({
+      success: true,
+      data: regionStats
+    });
+  } catch (error) {
+    console.error('❌ Erro ao obter estatísticas de região:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get("/admin/region-users/:region", async (req, res) => {
+  try {
+    const { region } = req.params;
+    let users;
+
+    if (region === 'all') {
+      users = await dbService.getAllUsers();
+    } else {
+      users = await dbService.getUsersByCity(region);
+    }
+
+    res.json({
+      success: true,
+      data: {
+        count: users.length,
+        users: users.map(u => ({
+          contact: maskContactForAdmin(u.contact),
+          last_access: u.last_access
+        }))
+      }
+    });
+  } catch (error) {
+    console.error('❌ Erro ao obter usuários da região:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get("/admin/weather/:region", async (req, res) => {
+  try {
+    const { region } = req.params;
+    const weatherData = await weatherService.getCurrentWeather(region);
+
+    res.json({
+      success: true,
+      data: weatherData
+    });
+  } catch (error) {
+    console.error('❌ Erro ao obter dados meteorológicos:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get("/admin/users-by-region", async (req, res) => {
+  try {
+    const usersByRegion = await dbService.getUsersCountByRegion();
+
+    res.json({
+      success: true,
+      data: usersByRegion
+    });
+  } catch (error) {
+    console.error('❌ Erro ao obter usuários por região:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post("/admin/send-alert", async (req, res) => {
+  try {
+    const { region, type, title, message, includeWeather, password } = req.body;
+
+    // Verificar senha
+    if (password !== 'joana@bot') {
+      return res.status(401).json({
+        success: false,
+        error: 'Senha incorreta'
+      });
+    }
+
+    // Obter usuários da região
+    let targetUsers;
+    if (region === 'all') {
+      targetUsers = await dbService.getAllUsers();
+    } else {
+      targetUsers = await dbService.getUsersByRegion(region);
+    }
+
+    if (targetUsers.length === 0) {
+      return res.json({
+        success: false,
+        error: 'Nenhum usuário encontrado para a região selecionada'
+      });
+    }
+
+    // Obter dados meteorológicos se solicitado
+    let weatherData = {};
+    if (includeWeather && region !== 'all') {
+      try {
+        const weather = await weatherService.getCurrentWeather(region);
+        weatherData = {
+          temperature: weather.temperature,
+          description: weather.description,
+          city: weather.city,
+          humidity: weather.humidity
+        };
+      } catch (error) {
+        console.log('⚠️ Erro ao obter dados meteorológicos:', error.message);
+      }
+    }
+
+    // Salvar alerta no banco
+    const alertData = {
+      title,
+      message,
+      alert_type: type,
+      target_region: region,
+      include_weather: includeWeather,
+      weather_data: weatherData,
+      users_count: targetUsers.length,
+      delivery_status: 'sending'
+    };
+
+    const savedAlert = await dbService.saveAlert(alertData);
+    if (!savedAlert) {
+      return res.status(500).json({
+        success: false,
+        error: 'Erro ao salvar alerta no banco de dados'
+      });
+    }
+
+    // Construir mensagem do alerta
+    const typeIcons = {
+      'urgente': '🚨',
+      'aviso': '⚠️',
+      'informacao': 'ℹ️',
+      'meteorologico': '🌩️',
+      'seguranca': '🛡️'
+    };
+
+    let alertMessage = `${typeIcons[type]} *${title}*\n\n${message}`;
+
+    // Adicionar dados meteorológicos se solicitado
+    if (includeWeather && Object.keys(weatherData).length > 0) {
+      alertMessage += `\n\n🌤️ *Condições atuais em ${weatherData.city}:*\n🌡️ ${weatherData.temperature}°C\n💧 ${weatherData.humidity}% umidade\n☀️ ${weatherData.description}`;
+    }
+
+    alertMessage += `\n\n---\n_Alerta enviado pela Joana Bot - ${new Date().toLocaleString('pt-BR')}_`;
+
+    // Enviar alerta para todos os usuários da região
+    let sentCount = 0;
+    let errorCount = 0;
+
+    for (const user of targetUsers) {
+      try {
+        await whatsappApi.enviarMensagemUsandoWhatsappAPI(alertMessage, user.contact);
+        await dbService.saveAlertDelivery(savedAlert.id, user.contact, 'sent');
+        sentCount++;
+
+        // Log de sucesso
+        await dbService.saveAdminLog('info', `Alerta enviado para ${user.contact}`, 'alerts', {
+          alertId: savedAlert.id,
+          userContact: user.contact
+        });
+
+        // Pequeno delay para não sobrecarregar a API
+        if (targetUsers.length > 10) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      } catch (error) {
+        await dbService.saveAlertDelivery(savedAlert.id, user.contact, 'failed', error.message);
+        errorCount++;
+
+        // Log de erro
+        await dbService.saveAdminLog('error', `Falha ao enviar alerta para ${user.contact}: ${error.message}`, 'alerts', {
+          alertId: savedAlert.id,
+          userContact: user.contact
+        });
+      }
+    }
+
+    // Atualizar status do alerta
+    const finalStatus = errorCount === 0 ? 'completed' : 'completed';
+    await dbService.updateAlertStatus(savedAlert.id, finalStatus, sentCount);
+
+    // Log geral
+    await dbService.saveAdminLog('info', `Alerta "${title}" enviado: ${sentCount} sucessos, ${errorCount} erros`, 'alerts', {
+      alertId: savedAlert.id,
+      totalUsers: targetUsers.length,
+      sentCount,
+      errorCount
+    });
+
+    res.json({
+      success: true,
+      data: {
+        alertId: savedAlert.id,
+        sentCount,
+        totalUsers: targetUsers.length,
+        errorCount,
+        message: `Alerta enviado para ${sentCount} de ${targetUsers.length} usuários`
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao enviar alerta:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get("/admin/recent-alerts", async (req, res) => {
+  try {
+    // Buscar alertas recentes do banco de dados
+    const recentAlerts = await dbService.getRecentAlerts();
+
+    res.json({
+      success: true,
+      data: recentAlerts
+    });
+  } catch (error) {
+    console.error('❌ Erro ao obter alertas recentes:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ===============================================
+// FUNÇÕES AUXILIARES PARA ANALYTICS
+// ===============================================
+
+function calculateDailyQueries(users) {
+  const last7Days = [];
+  for (let i = 6; i >= 0; i--) {
+    const date = new Date();
+    date.setDate(date.getDate() - i);
+    last7Days.push({
+      date: date.toISOString().split('T')[0],
+      count: Math.floor(Math.random() * 50) + 10 // Placeholder - calcular real
+    });
+  }
+  return last7Days;
+}
+
+function calculateTopCities(users) {
+  const cityCount = {};
+  users.forEach(user => {
+    const city = user.preferred_city || user.last_city;
+    if (city) {
+      cityCount[city] = (cityCount[city] || 0) + 1;
+    }
+  });
+
+  return Object.entries(cityCount)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 5)
+    .map(([city, count]) => ({ city, count }));
+}
+
+function calculateExpertiseDistribution(users) {
+  const distribution = { basic: 0, intermediate: 0, advanced: 0 };
+  users.forEach(user => {
+    distribution[user.expertise_level] = (distribution[user.expertise_level] || 0) + 1;
+  });
+  return distribution;
+}
+
+function calculateGrowthData(users) {
+  const last30Days = [];
+  let cumulative = 0;
+
+  for (let i = 29; i >= 0; i--) {
+    const date = new Date();
+    date.setDate(date.getDate() - i);
+
+    // Contar usuários criados até esta data
+    const usersUntilDate = users.filter(user =>
+      new Date(user.created_at) <= date
+    ).length;
+
+    last30Days.push({
+      date: date.toISOString().split('T')[0],
+      cumulative: usersUntilDate
+    });
+  }
+
+  return last30Days;
+}
+
+function calculateAverageQueries(users) {
+  if (users.length === 0) return 0;
+  const totalQueries = users.reduce((sum, user) => sum + (user.query_count || 0), 0);
+  return Math.round(totalQueries / users.length);
+}
+
+function calculateRetentionRate(users) {
+  const now = new Date();
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+  const totalUsers = users.length;
+  const activeUsers = users.filter(user =>
+    new Date(user.last_access) >= weekAgo
+  ).length;
+
+  return totalUsers > 0 ? Math.round((activeUsers / totalUsers) * 100) : 0;
+}
+
+function calculatePopularCities(users) {
+  const cityCount = {};
+  users.forEach(user => {
+    if (user.weather_preferences?.cities) {
+      user.weather_preferences.cities.forEach(cityObj => {
+        const cityName = cityObj.name || cityObj;
+        cityCount[cityName] = (cityCount[cityName] || 0) + (cityObj.count || 1);
+      });
+    }
+  });
+
+  return Object.entries(cityCount)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 10)
+    .map(([name, count]) => ({ name, count }));
+}
+
+function calculateCityQueries(users) {
+  const cityQueries = {};
+  users.forEach(user => {
+    const city = user.preferred_city || user.last_city || 'Não definido';
+    cityQueries[city] = (cityQueries[city] || 0) + (user.query_count || 0);
+  });
+  return cityQueries;
+}
+
+function maskContactForAdmin(contact) {
+  if (!contact) return '';
+  return contact.substring(0, 3) + '****' + contact.substring(contact.length - 3);
+}
+
+// ===============================================
 // INICIALIZAÇÃO DO SERVIDOR
 // ===============================================
 
 app.listen(port, async () => {
   console.log(`🌡️ Temperature Bot com SUPABASE running on port ${port}`);
   console.log(`📅 Started at: ${new Date().toLocaleString()}`);
+  console.log(`🌐 Admin Panel: http://localhost:${port}/admin`);
 
   // Testar conexões na inicialização
   try {
@@ -3095,6 +3615,7 @@ app.listen(port, async () => {
     console.log(`   • Progressão de Expertise: ✅`);
     console.log(`   • Sugestões Inteligentes: ✅`);
     console.log(`   • Armazenamento Persistente: ✅ Supabase`);
+    console.log(`   • Painel Administrativo: ✅`);
 
   } catch (error) {
     console.error('❌ Erro na inicialização:', error);

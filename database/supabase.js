@@ -512,6 +512,228 @@ class SupabaseService {
             return false;
         }
     }
+
+    // ===============================================
+    // MÉTODOS PARA SISTEMA DE ALERTAS
+    // ===============================================
+
+    async getUsersByRegion(region) {
+        try {
+            let query = this.supabase.from('users').select('*');
+
+            if (region && region !== 'all') {
+                query = query.or(`preferred_city.eq.${region},last_city.eq.${region}`);
+            }
+
+            const { data, error } = await query;
+
+            if (error) {
+                console.error('❌ Erro ao buscar usuários por região:', error);
+                return [];
+            }
+
+            return data || [];
+        } catch (error) {
+            console.error('❌ Erro ao buscar usuários por região:', error);
+            return [];
+        }
+    }
+
+    async getUsersCountByRegion() {
+        try {
+            const { data, error } = await this.supabase
+                .from('users_by_region')
+                .select('*');
+
+            if (error) {
+                console.error('❌ Erro ao buscar contagem por região:', error);
+                return [];
+            }
+
+            return data || [];
+        } catch (error) {
+            console.error('❌ Erro ao buscar contagem por região:', error);
+            return [];
+        }
+    }
+
+    async saveAlert(alertData) {
+        try {
+            const { data, error } = await this.supabase
+                .from('admin_alerts')
+                .insert([alertData])
+                .select()
+                .single();
+
+            if (error) {
+                console.error('❌ Erro ao salvar alerta:', error);
+                return null;
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Erro ao salvar alerta:', error);
+            return null;
+        }
+    }
+
+    async saveAlertDelivery(alertId, userContact, status = 'sent', errorMessage = null) {
+        try {
+            const { data, error } = await this.supabase
+                .from('alert_deliveries')
+                .insert([{
+                    alert_id: alertId,
+                    user_contact: userContact,
+                    delivery_status: status,
+                    error_message: errorMessage
+                }]);
+
+            if (error) {
+                console.error('❌ Erro ao salvar entrega de alerta:', error);
+                return false;
+            }
+
+            return true;
+        } catch (error) {
+            console.error('❌ Erro ao salvar entrega de alerta:', error);
+            return false;
+        }
+    }
+
+    async getRecentAlerts(limit = 10) {
+        try {
+            const { data, error } = await this.supabase
+                .from('recent_alerts_summary')
+                .select('*')
+                .order('sent_at', { ascending: false })
+                .limit(limit);
+
+            if (error) {
+                console.error('❌ Erro ao buscar alertas recentes:', error);
+                return [];
+            }
+
+            return data || [];
+        } catch (error) {
+            console.error('❌ Erro ao buscar alertas recentes:', error);
+            return [];
+        }
+    }
+
+    async updateAlertStatus(alertId, status, usersCount = null) {
+        try {
+            const updateData = { delivery_status: status };
+            if (usersCount !== null) {
+                updateData.users_count = usersCount;
+            }
+
+            const { data, error } = await this.supabase
+                .from('admin_alerts')
+                .update(updateData)
+                .eq('id', alertId)
+                .select()
+                .single();
+
+            if (error) {
+                console.error('❌ Erro ao atualizar status do alerta:', error);
+                return null;
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Erro ao atualizar status do alerta:', error);
+            return null;
+        }
+    }
+
+    async saveAdminLog(level, message, module = 'system', metadata = {}) {
+        try {
+            const { data, error } = await this.supabase
+                .from('admin_logs')
+                .insert([{
+                    level,
+                    message,
+                    module,
+                    metadata
+                }]);
+
+            if (error) {
+                console.error('❌ Erro ao salvar log admin:', error);
+                return false;
+            }
+
+            return true;
+        } catch (error) {
+            console.error('❌ Erro ao salvar log admin:', error);
+            return false;
+        }
+    }
+
+    async getAdminLogs(limit = 50) {
+        try {
+            const { data, error } = await this.supabase
+                .from('admin_logs')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(limit);
+
+            if (error) {
+                console.error('❌ Erro ao buscar logs admin:', error);
+                return [];
+            }
+
+            return data || [];
+        } catch (error) {
+            console.error('❌ Erro ao buscar logs admin:', error);
+            return [];
+        }
+    }
+
+    async getAdminSetting(key) {
+        try {
+            const { data, error } = await this.supabase
+                .from('admin_settings')
+                .select('*')
+                .eq('setting_key', key)
+                .single();
+
+            if (error && error.code !== 'PGRST116') {
+                console.error('❌ Erro ao buscar configuração:', error);
+                return null;
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Erro ao buscar configuração:', error);
+            return null;
+        }
+    }
+
+    async saveAdminSetting(key, value, type = 'string', description = '') {
+        try {
+            const { data, error } = await this.supabase
+                .from('admin_settings')
+                .upsert([{
+                    setting_key: key,
+                    setting_value: value,
+                    setting_type: type,
+                    description,
+                    updated_at: new Date().toISOString()
+                }], { onConflict: 'setting_key' })
+                .select()
+                .single();
+
+            if (error) {
+                console.error('❌ Erro ao salvar configuração:', error);
+                return null;
+            }
+
+            return data;
+        } catch (error) {
+            console.error('❌ Erro ao salvar configuração:', error);
+            return null;
+        }
+    }
 }
 
 module.exports = SupabaseService;

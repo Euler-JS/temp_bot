@@ -7,6 +7,10 @@
     "start": "node index.js",
     "dev": "nodemon index.js",
     "test": "echo \"Error: no test specified\" && exit 1",
+    "test:admin": "node test_admin_panel.js",
+    "test:admin:performance": "node test_admin_panel.js --performance",
+    "setup:admin": "node scripts/setup_admin_tables.js",
+    "setup:admin:seed": "node scripts/setup_admin_tables.js --seed",
     "build": "echo 'Build completed successfully'",
     "vercel-build": "echo 'Vercel build completed'",
     "lint": "echo 'Linting would go here'",
@@ -31,7 +35,8 @@
     "body-parser": "^1.20.2",
     "dotenv": "^16.6.1",
     "express": "^4.18.2",
-    "node-cron": "^3.0.3"
+    "node-cron": "^3.0.3",
+    "node-fetch": "^2.7.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
