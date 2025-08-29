@@ -522,6 +522,28 @@ async function handleSafetyAdviceCommand(phoneNumber, user) {
 
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(finalMessage, phoneNumber);
 
+    // **NOVO** - Após enviar conselhos, gerar e enviar lista interativa de opções adicionais
+    console.log('🤖 Gerando opções de conselhos adicionais com AI...');
+    setTimeout(async () => {
+      try {
+        const adviceOptions = await openaiService.generateAdviceOptions(weatherData, {
+          lastAdviceType: 'safety_advice',
+          userExpertise: userContext.expertiseLevel,
+          weatherCondition: weatherData.description,
+          temperature: weatherData.temperature
+        });
+
+        if (adviceOptions.success && adviceOptions.options.length > 0) {
+          await whatsappApi.enviarListaConselhosPersonalizados(phoneNumber, adviceOptions.options, weatherData);
+          console.log('✅ Lista de opções de conselhos enviada com sucesso');
+        } else {
+          console.log('⚠️ Nenhuma opção de conselho foi gerada');
+        }
+      } catch (error) {
+        console.error('❌ Erro ao enviar opções de conselhos:', error.message);
+      }
+    }, 2000); // Aguardar 2 segundos para não sobrecarregar
+
     // Atualizar contador de consultas
     await saveOrUpdateAdvancedUser(phoneNumber, {
       query_count: (userContext.queryCount || 0) + 1,
@@ -2077,9 +2099,43 @@ async function processAdvancedInteractiveMessage(interactive, phoneNumber) {
         await handleWeatherAlertsSetupRequest(phoneNumber);
         break;
 
+      // Handlers para conselhos personalizados gerados por AI
+      case "cuidados_saude":
+        await handleHealthCareAdviceRequest(phoneNumber);
+        break;
+
+      case "atividades_recomendadas":
+        await handleRecommendedActivitiesRequest(phoneNumber);
+        break;
+
+      case "preparacao_mudancas":
+        await handleWeatherChangesPreparationRequest(phoneNumber);
+        break;
+
+      case "dicas_seguranca":
+        await handleSafetyTipsRequest(phoneNumber);
+        break;
+
+      case "conselhos_casa":
+        await handleHomeTipsRequest(phoneNumber);
+        break;
+
+      case "combater_calor":
+        await handleAdvancedHeatTipsRequest(phoneNumber);
+        break;
+
+      case "manter_aquecido":
+        await handleAdvancedColdTipsRequest(phoneNumber);
+        break;
+
       default:
-        // Processar como texto normal para compatibilidade
-        await processAdvancedTextMessage(listId, phoneNumber);
+        // Para IDs gerados dinamicamente pela AI, usar handler genérico
+        if (listId.startsWith('conselho_') || listId.includes('_')) {
+          await handleDynamicAdviceRequest(phoneNumber, listId, listTitle);
+        } else {
+          // Processar como texto normal para compatibilidade
+          await processAdvancedTextMessage(listId, phoneNumber);
+        }
     }
   }
 }
@@ -2375,6 +2431,233 @@ async function handleWeatherAlertsSetupRequest(phoneNumber) {
 🎯 *Quer configurar agora?* Envia "/alertas" para começar!`;
 
   await whatsappApi.enviarMensagemUsandoWhatsappAPI(alertsInfo, phoneNumber);
+}
+
+// ===============================================
+// HANDLERS PARA CONSELHOS PERSONALIZADOS AI
+// ===============================================
+
+async function handleHealthCareAdviceRequest(phoneNumber) {
+  try {
+    console.log(`🏥 Solicitação de cuidados de saúde para ${phoneNumber}`);
+
+    const user = await getUserByContact(phoneNumber);
+    const city = user?.preferred_city || user?.last_city || 'Maputo';
+
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Eh pá, deixa ver que cuidados de saúde são importantes com este tempo...');
+
+    const weatherData = await weatherService.getCurrentWeather(city);
+
+    // Usar AI para gerar conselhos de saúde específicos
+    const healthAdvice = await openaiService.generateSafetyAdvice(weatherData, {
+      adviceType: 'health_care',
+      expertiseLevel: user?.expertise_level || 'basic'
+    });
+
+    if (healthAdvice.success) {
+      await whatsappApi.enviarMensagemUsandoWhatsappAPI(healthAdvice.message, phoneNumber);
+    } else {
+      await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+        `🏥 *Cuidados de Saúde em ${city}*\n\nCom a temperatura atual, é importante manter-se hidratado, proteger-se adequadamente e estar atento a sinais de mal-estar relacionados ao clima.`,
+        phoneNumber
+      );
+    }
+  } catch (error) {
+    console.error('❌ Erro ao processar cuidados de saúde:', error);
+    await whatsappApi.enviarMensagemErro(phoneNumber, "Erro ao obter conselhos de saúde");
+  }
+}
+
+async function handleRecommendedActivitiesRequest(phoneNumber) {
+  try {
+    console.log(`🎯 Solicitação de atividades recomendadas para ${phoneNumber}`);
+
+    const user = await getUserByContact(phoneNumber);
+
+    // Usar a mesma função que já funciona para atividades
+    await handleActivitySuggestionsRequest(phoneNumber);
+  } catch (error) {
+    console.error('❌ Erro ao processar atividades recomendadas:', error);
+    await whatsappApi.enviarMensagemErro(phoneNumber, "Erro ao obter atividades recomendadas");
+  }
+}
+
+async function handleWeatherChangesPreparationRequest(phoneNumber) {
+  try {
+    console.log(`🌤️ Solicitação de preparação para mudanças climáticas para ${phoneNumber}`);
+
+    const user = await getUserByContact(phoneNumber);
+    const city = user?.preferred_city || user?.last_city || 'Maputo';
+
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Deixa eu ver que mudanças podem vir e como te preparares...');
+
+    const forecastData = await weatherService.getWeatherForecast(city, 3);
+    const currentWeather = await weatherService.getCurrentWeather(city);
+
+    let preparationMessage = `🌤️ *Preparação para Mudanças do Tempo em ${city}*\n\n`;
+    preparationMessage += `📊 *Situação Atual:* ${currentWeather.temperature}°C, ${currentWeather.description}\n\n`;
+
+    if (forecastData && forecastData.length > 1) {
+      preparationMessage += `📅 *Próximos Dias:*\n`;
+      forecastData.slice(1, 3).forEach((day, index) => {
+        const dayName = index === 0 ? 'Amanhã' : 'Depois de amanhã';
+        preparationMessage += `• ${dayName}: ${day.minTemp}°C-${day.maxTemp}°C, ${day.description}\n`;
+      });
+
+      preparationMessage += `\n💡 *Recomendações:*\n`;
+      preparationMessage += `• Verifica a previsão antes de sair\n`;
+      preparationMessage += `• Prepara roupas para diferentes temperaturas\n`;
+      preparationMessage += `• Leva guarda-chuva se necessário\n`;
+      preparationMessage += `• Planifica atividades baseado no tempo\n`;
+    } else {
+      preparationMessage += `💡 *Dicas Gerais:*\n`;
+      preparationMessage += `• Sempre verifica a previsão pela manhã\n`;
+      preparationMessage += `• Mantém roupas variadas disponíveis\n`;
+      preparationMessage += `• Tem sempre guarda-chuva à mão\n`;
+    }
+
+    preparationMessage += `\n🤖 *Dica da Joana Bot:* As mudanças climáticas podem ser súbitas, estar preparado é sempre a melhor estratégia!`;
+
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(preparationMessage, phoneNumber);
+  } catch (error) {
+    console.error('❌ Erro ao processar preparação para mudanças:', error);
+    await whatsappApi.enviarMensagemErro(phoneNumber, "Erro ao obter conselhos de preparação");
+  }
+}
+
+async function handleSafetyTipsRequest(phoneNumber) {
+  try {
+    console.log(`⚠️ Solicitação de dicas de segurança para ${phoneNumber}`);
+
+    // Usar a função existente de conselhos de segurança
+    const user = await getUserByContact(phoneNumber);
+    await handleSafetyAdviceCommand(phoneNumber, user);
+  } catch (error) {
+    console.error('❌ Erro ao processar dicas de segurança:', error);
+    await whatsappApi.enviarMensagemErro(phoneNumber, "Erro ao obter dicas de segurança");
+  }
+}
+
+async function handleHomeTipsRequest(phoneNumber) {
+  try {
+    console.log(`🏠 Solicitação de dicas para casa para ${phoneNumber}`);
+
+    const user = await getUserByContact(phoneNumber);
+    const city = user?.preferred_city || user?.last_city || 'Maputo';
+
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Deixa ver que dicas posso dar para a tua casa...');
+
+    const weatherData = await weatherService.getCurrentWeather(city);
+    const temp = parseInt(weatherData.temperature);
+
+    let homeTips = `🏠 *Dicas para Casa com ${temp}°C*\n\n`;
+
+    if (temp > 30) {
+      homeTips += `🌞 *Dias Quentes:*\n`;
+      homeTips += `• Fecha cortinas e persianas durante o dia\n`;
+      homeTips += `• Usa ventoinhas para circular o ar\n`;
+      homeTips += `• Evita usar forno e equipamentos que aquecem\n`;
+      homeTips += `• Abre janelas à noite para refrescar\n`;
+      homeTips += `• Mantenha água gelada sempre disponível\n`;
+    } else if (temp < 20) {
+      homeTips += `🧥 *Dias Frios:*\n`;
+      homeTips += `• Fecha bem portas e janelas\n`;
+      homeTips += `• Usa cobertores e roupas de cama quentes\n`;
+      homeTips += `• Aquece a casa gradualmente\n`;
+      homeTips += `• Prepara bebidas quentes\n`;
+      homeTips += `• Verifica se não há correntes de ar\n`;
+    } else {
+      homeTips += `🌤️ *Temperatura Agradável:*\n`;
+      homeTips += `• Aproveita para ventilar a casa\n`;
+      homeTips += `• Faz limpezas que precisam de janelas abertas\n`;
+      homeTips += `• Organiza roupas de acordo com a estação\n`;
+      homeTips += `• Planifica atividades ao ar livre\n`;
+    }
+
+    if (weatherData.description.includes('chuva')) {
+      homeTips += `\n☔ *Com Chuva:*\n`;
+      homeTips += `• Verifica se há goteiras\n`;
+      homeTips += `• Protege equipamentos eletrônicos\n`;
+      homeTips += `• Mantenha toalhas extras disponíveis\n`;
+      homeTips += `• Tem lanterna carregada\n`;
+    }
+
+    homeTips += `\n💡 *Dica da Joana Bot:* Uma casa bem preparada para o clima torna o dia muito mais confortável!`;
+
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(homeTips, phoneNumber);
+  } catch (error) {
+    console.error('❌ Erro ao processar dicas para casa:', error);
+    await whatsappApi.enviarMensagemErro(phoneNumber, "Erro ao obter dicas para casa");
+  }
+}
+
+async function handleAdvancedHeatTipsRequest(phoneNumber) {
+  try {
+    console.log(`🌞 Solicitação de dicas avançadas para calor para ${phoneNumber}`);
+
+    // Usar a função existente mas com mais detalhes
+    await handleHeatTipsRequest(phoneNumber);
+
+    // Adicionar dicas avançadas extras
+    const advancedTips = `\n🔥 *Dicas Avançadas para Calor Extremo:*\n\n`;
+    const extraTips = `💧 *Hidratação Inteligente:*\n• Bebe água antes de sentir sede\n• Adiciona uma pitada de sal na água\n• Evita bebidas muito geladas de uma vez\n\n🧊 *Resfriamento Corporal:*\n• Molha pulsos e pescoço com água fria\n• Usa toalha húmida na nuca\n• Banhos mornos (não frios) refrescam mais\n\n⏰ *Horários Estratégicos:*\n• Atividades físicas antes das 10h ou após 16h\n• Compras e saídas pela manhã cedo\n• Descanso obrigatório das 12h às 15h`;
+
+    setTimeout(async () => {
+      await whatsappApi.enviarMensagemUsandoWhatsappAPI(advancedTips + extraTips, phoneNumber);
+    }, 1500);
+  } catch (error) {
+    console.error('❌ Erro ao processar dicas avançadas de calor:', error);
+    await whatsappApi.enviarMensagemErro(phoneNumber, "Erro ao obter dicas avançadas");
+  }
+}
+
+async function handleAdvancedColdTipsRequest(phoneNumber) {
+  try {
+    console.log(`🧥 Solicitação de dicas avançadas para frio para ${phoneNumber}`);
+
+    await handleColdTipsRequest(phoneNumber);
+
+    const advancedColdTips = `\n❄️ *Estratégias Avançadas para Frio:*\n\n🧥 *Sistema de Camadas:*\n• Base: roupa térmica ou algodão\n• Meio: pullover ou cardigan\n• Exterior: casaco corta-vento\n\n🔥 *Aquecimento Eficiente:*\n• Exercícios leves para circular sangue\n• Bebidas quentes a cada 2 horas\n• Aquece extremidades primeiro\n\n🏠 *Casa Inteligente:*\n• Concentra aquecimento num só cômodo\n• Usa tapetes para isolar do chão frio\n• Fecha divisões não utilizadas`;
+
+    setTimeout(async () => {
+      await whatsappApi.enviarMensagemUsandoWhatsappAPI(advancedColdTips, phoneNumber);
+    }, 1500);
+  } catch (error) {
+    console.error('❌ Erro ao processar dicas avançadas de frio:', error);
+    await whatsappApi.enviarMensagemErro(phoneNumber, "Erro ao obter dicas avançadas");
+  }
+}
+
+async function handleDynamicAdviceRequest(phoneNumber, listId, listTitle) {
+  try {
+    console.log(`🤖 Solicitação de conselho dinâmico: ${listId} - ${listTitle}`);
+
+    const user = await getUserByContact(phoneNumber);
+    const city = user?.preferred_city || user?.last_city || 'Maputo';
+
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, `Eh pá, deixa ver mais sobre "${listTitle}"...`);
+
+    const weatherData = await weatherService.getCurrentWeather(city);
+
+    // Usar AI para gerar resposta específica baseada no ID e título
+    const dynamicAdvice = await openaiService.generateSafetyAdvice(weatherData, {
+      adviceType: 'dynamic',
+      requestedTopic: listTitle,
+      topicId: listId,
+      expertiseLevel: user?.expertise_level || 'basic'
+    });
+
+    if (dynamicAdvice.success) {
+      await whatsappApi.enviarMensagemUsandoWhatsappAPI(dynamicAdvice.message, phoneNumber);
+    } else {
+      // Fallback genérico
+      const fallbackMessage = `💡 *${listTitle}*\n\nCom ${weatherData.temperature}°C em ${city}, é importante estar sempre atento às condições climáticas e tomar as precauções adequadas.\n\n🤖 *Dica da Joana Bot:* Cada situação climática tem os seus cuidados específicos. Fica sempre atento às mudanças!`;
+      await whatsappApi.enviarMensagemUsandoWhatsappAPI(fallbackMessage, phoneNumber);
+    }
+  } catch (error) {
+    console.error('❌ Erro ao processar conselho dinâmico:', error);
+    await whatsappApi.enviarMensagemErro(phoneNumber, "Erro ao processar conselho");
+  }
 }
 
 async function processLocationMessage(location, phoneNumber) {

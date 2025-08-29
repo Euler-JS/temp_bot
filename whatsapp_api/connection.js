@@ -926,6 +926,57 @@ class WhatsAppApi {
         return await this.enviarMensagemInterativaUsandoWhatsappAPI(interestMenu);
     }
 
+    // **NOVO** - Lista de conselhos personalizados gerados por AI
+    async enviarListaConselhosPersonalizados(numeroCelular, adviceOptions, weatherData) {
+        if (!adviceOptions || adviceOptions.length === 0) {
+            console.log('⚠️ Nenhuma opção de conselho disponível');
+            return;
+        }
+
+        const temp = parseInt(weatherData.temperature);
+        const city = weatherData.city;
+
+        // Limitar opções e garantir formato correto
+        const formattedOptions = adviceOptions.slice(0, 8).map(option => ({
+            id: option.id || `conselho_${Date.now()}`,
+            title: option.title.length > 24 ? option.title.substring(0, 21) + '...' : option.title,
+            description: option.description.length > 72 ? option.description.substring(0, 69) + '...' : option.description
+        }));
+
+        const sections = [
+            {
+                title: "💡 Mais conselhos úteis",
+                rows: formattedOptions
+            }
+        ];
+
+        const adviceMenu = {
+            messaging_product: 'whatsapp',
+            recipient_type: "individual",
+            to: numeroCelular,
+            type: "interactive",
+            interactive: {
+                type: "list",
+                header: {
+                    type: "text",
+                    text: "🤔 Outros conselhos?"
+                },
+                body: {
+                    text: `Eh pá, com ${temp}°C em ${city}, aqui tens mais alguns conselhos que podem ser úteis:`
+                },
+                footer: {
+                    text: "Joana Bot - Sempre com bons conselhos! 💡"
+                },
+                action: {
+                    button: "Ver Conselhos",
+                    sections: sections
+                }
+            }
+        };
+
+        return await this.enviarMensagemInterativaUsandoWhatsappAPI(adviceMenu);
+    }
+
     // **UTILITÁRIOS AUXILIARES**
 
     getContextualDescription(sugestao, contexto) {

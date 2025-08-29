@@ -91,6 +91,7 @@ ${includeCommands ? `💡 *Comandos especiais:*
             'weather_tips',
             'city_comparison',
             'weather_education',
+            'safety_zones',
             'tempo_atual',
             'futuro',
             'ideias_de_atividades',
@@ -111,7 +112,8 @@ ${includeCommands ? `💡 *Comandos especiais:*
             'politics',
             'food',
             'shopping',
-            'time_question'
+            'time_question',
+            'positive_feedback'  // Adicionado feedback positivo como não-climático
         ];
 
         // Se é explicitamente não-climático, retornar false
@@ -349,11 +351,13 @@ PERGUNTAS SOBRE CLIMA/TEMPO:
 - "o que fazer", "há atividade", "onde ir" → ideias_de_atividades (requires_weather_data: true)
 - "que roupa", "como vestir" → conselhos_de_roupa (requires_weather_data: true)
 - "calor", "frio", "dicas clima" → weather_tips (requires_weather_data: true)
+- "zonas de risco", "áreas perigosas", "segurança", "inundação", "ciclone" → safety_zones (requires_weather_data: true)
 
 PERGUNTAS NÃO SOBRE CLIMA:
 - "olá", "bom dia", "como estás" → greeting (requires_weather_data: false)
 - "ajuda", "não entendo", "comandos" → general_help (requires_weather_data: false)
 - "obrigado", "muito obrigado" → thanks (requires_weather_data: false)
+- "muito bom", "muito boa", "perfeito", "excelente", "óptimo" → positive_feedback (requires_weather_data: false)
 - "política", "governo", "eleições" → politics (requires_weather_data: false)
 - "comida", "onde comer", "restaurante" → food (requires_weather_data: false)
 - "comprar", "loja", "shopping" → shopping (requires_weather_data: false)
@@ -430,6 +434,11 @@ Responde só o JSON:
 
     async generateWeatherResponse(analysis, weatherData, userContext) {
         try {
+            // Se é uma pergunta sobre zonas de risco, usar função específica
+            if (analysis.intent === 'safety_zones') {
+                return await this.generateSafetyZonesResponse(analysis, weatherData, userContext);
+            }
+
             if (!this.token) {
                 return this.generateBasicWeatherResponse(weatherData, analysis);
             }
@@ -582,6 +591,130 @@ ${this.getTemperatureTip(temp)}`;
         } else {
             return '💡 **Dica:** Vista roupas quentes e mantenha-se aquecido!';
         }
+    }
+
+    // ===============================================
+    // INFORMAÇÕES SOBRE ZONAS DE RISCO CLIMÁTICO
+    // ===============================================
+
+    async generateSafetyZonesResponse(analysis, weatherData, userContext) {
+        try {
+            if (!this.token) {
+                return this.generateBasicSafetyZonesResponse(weatherData);
+            }
+
+            const prompt = this.buildSafetyZonesPrompt(analysis, weatherData, userContext);
+            const response = await this.callOpenAI(prompt, 0.7);
+
+            return response.trim();
+
+        } catch (error) {
+            console.error('❌ Erro AI safety zones response:', error.message);
+            return this.generateBasicSafetyZonesResponse(weatherData);
+        }
+    }
+
+    buildSafetyZonesPrompt(analysis, weatherData, userContext) {
+        const temp = parseInt(weatherData.temperature);
+        const city = weatherData.city.toLowerCase();
+        const condition = weatherData.description;
+
+        return `A pessoa perguntou sobre zonas de risco na ${city} relacionadas ao clima. Com ${temp}°C e ${condition}, preciso dar informações importantes de segurança.
+
+INFORMAÇÕES SOBRE ZONAS DE RISCO EM ${city.toUpperCase()}:
+
+${city === 'beira' ? `
+🏙️ *BEIRA - Zonas de Risco Climático:*
+
+⚠️ *ZONAS DE ALTO RISCO:*
+• Macúti/Costa - vulnerável a ciclones e marés altas
+• Munhava baixa - áreas de inundação frequente  
+• Manga baixa - zona baixa sujeita a alagamentos
+• Marromeu - áreas rurais próximas ao Zambeze
+• Estaquinha - zona costeira exposta
+
+🔴 *RISCOS PRINCIPAIS:*
+• Ciclones tropicais (Nov-Abril)
+• Inundações do Rio Zambeze
+• Erosão costeira e marés altas
+• Ventos fortes durante tempestades
+
+` : `
+🏙️ *${city.toUpperCase()} - Zonas de Risco Climático:*
+
+⚠️ *RISCOS COMUNS EM MOÇAMBIQUE:*
+• Zonas baixas - risco de inundação
+• Áreas próximas a rios - cheias sazonais
+• Costa - ciclones e marés altas
+• Zonas rurais - isolamento durante tempestades
+`}
+
+🌦️ *BASEADO NO TEMPO ATUAL (${temp}°C, ${condition}):*
+${this.getCurrentWeatherRiskAssessment(temp, condition)}
+
+🛡️ *MEDIDAS DE PREVENÇÃO:*
+• Mantenha-se informado sobre previsões meteorológicas
+• Tenha sempre um kit de emergência preparado
+• Conheça as rotas de evacuação da tua área
+• Evite construções em zonas baixas ou próximas a rios
+
+📱 *CONTACTOS DE EMERGÊNCIA:*
+• INGC (Instituto Nacional de Gestão de Calamidades): 119
+• Bombeiros: 198
+• Polícia: 119
+
+💡 *Dica:* Durante a época ciclónica (Nov-Abril), mantenha-se especialmente atento aos alertas meteorológicos!
+
+Responde de forma natural como um moçambicano experiente daria este conselho, máximo 400 palavras:`;
+    }
+
+    getCurrentWeatherRiskAssessment(temp, condition) {
+        if (condition.toLowerCase().includes('chuva') || condition.toLowerCase().includes('tempestade')) {
+            return `🌧️ Com chuva atual, EVITE:
+• Zonas baixas que podem alagar
+• Atravessar rios ou ribeiras
+• Circular em estradas não pavimentadas
+• Áreas próximas ao mar durante marés altas`;
+        } else if (temp > 35) {
+            return `🔥 Com calor extremo (${temp}°C), CUIDADO com:
+• Desidratação em áreas expostas
+• Incêndios em vegetação seca
+• Problemas de saúde em zonas sem sombra`;
+        } else if (condition.toLowerCase().includes('vento')) {
+            return `💨 Com vento forte, EVITE:
+• Áreas com árvores grandes
+• Estruturas temporárias ou frágeis
+• Atividades no mar ou rios`;
+        } else {
+            return `✅ Condições meteorológicas estáveis atualmente.
+• Mantenha-se atento a mudanças no tempo
+• Época das chuvas: Nov-Abril (maior risco)
+• Época seca: Mai-Out (mais estável)`;
+        }
+    }
+
+    generateBasicSafetyZonesResponse(weatherData) {
+        const city = weatherData.city;
+        const temp = parseInt(weatherData.temperature);
+        const condition = weatherData.description;
+
+        return `⚠️ **Zonas de Risco em ${city}**
+
+🌦️ **Condições atuais:** ${temp}°C, ${condition}
+
+🔴 **Áreas de maior risco:**
+• Zonas baixas próximas a rios
+• Áreas costeiras durante tempestades
+• Construções em encostas íngremes
+• Bairros sem drenagem adequada
+
+💡 **Recomendações gerais:**
+• Mantenha-se informado sobre o tempo
+• Tenha um plano de evacuação
+• Evite áreas de risco durante chuvas fortes
+• Contacte autoridades locais para informações específicas
+
+📞 **Emergências:** 119 (INGC)`;
     }
 
     // ===============================================
@@ -806,9 +939,9 @@ EXEMPLOS DE RESPOSTAS NATURAIS:
 ${this.getTipsGuidanceByIntent(analysis.intent, temp, condition)}
 
 FORMATO:
-Começa com algo como "💡 Eh pá..." e depois dá as dicas de forma muito natural, como numa conversa entre amigos. Ocasionalmente identifica-te como Joana Bot quando apropriado.
+Começa com algo como "💡 Eh pá..." e depois dá as dicas de forma muito natural, como numa conversa entre amigos experientes.
 
-Minha resposta natural como Joana Bot:`;
+Minha resposta natural:`;
     } getTipsGuidanceByIntent(intent, temperature, condition) {
         const isRaining = condition.toLowerCase().includes('chuva');
 
@@ -905,9 +1038,9 @@ EXEMPLOS DE LINGUAGEM NATURAL:
 ${this.getSuggestionsGuidanceByTemperature(temp, condition)}
 
 FORMATO:
-Começa identificando-te como Joana Bot se apropriado, depois dá as sugestões de forma muito natural, como se estivesses a conversar com um amigo. Termina perguntando algo como "Sobre o que gostarias de saber mais?"
+Começa diretamente com as sugestões de forma muito natural e conversacional, como se fosses um amigo experiente dando dicas úteis. Termina perguntando algo como "Sobre o que gostarias de saber mais?"
 
-Minha resposta conversacional como Joana Bot:`;
+Minha resposta conversacional:`;
     }
 
     getSuggestionsGuidanceByTemperature(temperature, condition) {
@@ -1016,15 +1149,16 @@ INSTRUÇÕES PARA CONSELHOS DE SEGURANÇA COMO JOANA BOT:
 5. Inclui dicas de prevenção específicas para Moçambique
 6. Máximo 300 palavras
 7. Seja firme mas amigável sobre segurança
-8. Identifica-te como Joana Bot especialista em meteorologia
+8. Responde diretamente sem apresentações desnecessárias
+9. Soa como alguém experiente dando conselhos úteis
 
 ASPECTOS DE SEGURANÇA A ABORDAR BASEADO NO CLIMA:
 ${this.getSafetyGuidanceByTemperature(temp, isRaining, humidity)}
 
 FORMATO:
-Começa identificando-te como Joana Bot e a importância da segurança, depois explica os riscos e prevenções de forma conversacional mas educativa.
+Começa diretamente com os conselhos de segurança de forma conversacional e educativa. Explica os riscos e prevenções naturalmente, como se fosses um especialista dando dicas importantes.
 
-Meus conselhos de segurança como Joana Bot:`;
+Meus conselhos de segurança:`;
     }
 
     getSafetyGuidanceByTemperature(temperature, isRaining, humidity) {
@@ -1157,8 +1291,8 @@ Responde só: ["sugestão1", "sugestão2", "sugestão3"]`;
         const lowerMessage = message.toLowerCase().trim();
 
         // Análise baseada em palavras-chave
-        let intent = 'weather_query_current';
-        let confidence = 0.6;
+        let intent = 'general_help'; // Mudei default para general ao invés de weather
+        let confidence = 0.4; // Baixei confidence para casos não identificados
         let entities = {
             cities: [],
             timeframe: 'none',
@@ -1166,12 +1300,34 @@ Responde só: ["sugestão1", "sugestão2", "sugestão3"]`;
             activity_type: 'none'
         };
 
-        // Detectar cidades
+        // Detectar cidades - SÓ se houver outras palavras indicativas de clima
         const cities = ['maputo', 'beira', 'nampula', 'quelimane', 'tete', 'chimoio', 'pemba', 'xai-xai', 'lichinga', 'inhambane'];
-        entities.cities = cities.filter(city => lowerMessage.includes(city));
+        const hasCities = cities.some(city => lowerMessage.includes(city));
 
-        // Detectar intenções
-        if (lowerMessage.includes('atividade') || lowerMessage.includes('fazer') || lowerMessage.includes('onde ir')) {
+        // Palavras que indicam consulta meteorológica
+        const weatherKeywords = ['tempo', 'clima', 'temperatura', 'calor', 'frio', 'chuva', 'sol', 'vento', 'humidade', 'graus', 'meteorologia'];
+        const hasWeatherKeywords = weatherKeywords.some(word => lowerMessage.includes(word));
+
+        if (hasCities) {
+            entities.cities = cities.filter(city => lowerMessage.includes(city));
+        }
+
+        // Detectar intenções específicas primeiro
+        if (lowerMessage.includes('muito bom') || lowerMessage.includes('muito boa') || lowerMessage.includes('perfeito') ||
+            lowerMessage.includes('excelente') || lowerMessage.includes('óptimo') || lowerMessage.includes('ótimo')) {
+            intent = 'positive_feedback';
+            confidence = 0.95;
+        } else if (lowerMessage.includes('obrigad') || lowerMessage.includes('valeu') || lowerMessage.includes('thanks')) {
+            intent = 'thanks';
+            confidence = 0.95;
+        } else if (lowerMessage.includes('olá') || lowerMessage.includes('oi') || lowerMessage.includes('bom dia') ||
+            lowerMessage.includes('boa tarde') || lowerMessage.includes('boa noite')) {
+            intent = 'greeting';
+            confidence = 0.9;
+        } else if (lowerMessage.includes('ajuda') || lowerMessage.includes('help') || lowerMessage.includes('comandos')) {
+            intent = 'general_help';
+            confidence = 0.9;
+        } else if (lowerMessage.includes('atividade') || lowerMessage.includes('fazer') || lowerMessage.includes('onde ir')) {
             intent = 'activity_recommendation';
             confidence = 0.8;
             entities.activity_type = 'general';
@@ -1181,16 +1337,18 @@ Responde só: ["sugestão1", "sugestão2", "sugestão3"]`;
         } else if (lowerMessage.includes('dicas')) {
             intent = 'weather_tips';
             confidence = 0.8;
+        } else if (lowerMessage.includes('zona') && (lowerMessage.includes('risco') || lowerMessage.includes('perigosa')) ||
+                   lowerMessage.includes('segurança') || lowerMessage.includes('inundação') || lowerMessage.includes('ciclone')) {
+            intent = 'safety_zones';
+            confidence = 0.9;
         } else if (lowerMessage.includes('amanhã') || lowerMessage.includes('previsão')) {
             intent = 'weather_query_forecast';
             confidence = 0.8;
             entities.timeframe = 'tomorrow';
-        } else if (lowerMessage.includes('ajuda') || lowerMessage.includes('help')) {
-            intent = 'general_help';
-            confidence = 0.9;
-        } else if (lowerMessage.includes('olá') || lowerMessage.includes('oi') || lowerMessage.includes('bom dia')) {
-            intent = 'greeting';
-            confidence = 0.9;
+        } else if (hasWeatherKeywords || (hasCities && lowerMessage.length > 3)) {
+            // SÓ classificar como weather se tiver palavras-chave de clima OU cidade + contexto
+            intent = 'weather_query_current';
+            confidence = 0.7;
         }
 
         return {
@@ -1202,7 +1360,7 @@ Responde só: ["sugestão1", "sugestão2", "sugestão3"]`;
                 reasoning: 'Análise baseada em palavras-chave',
                 response_type: 'informative',
                 priority: 'medium',
-                requires_weather_data: intent.includes('weather') || intent.includes('activity') || intent.includes('clothing'),
+                requires_weather_data: intent.includes('weather') || intent.includes('activity') || intent.includes('clothing') || intent === 'safety_zones',
                 suggested_followup: 'contextual'
             },
             method: 'rule_based',
@@ -1337,6 +1495,160 @@ Responde só: ["sugestão1", "sugestão2", "sugestão3"]`;
             model: this.model,
             maxTokens: this.maxTokens
         };
+    }
+
+    // ===============================================
+    // GERAÇÃO DE OPÇÕES DE CONSELHOS COM AI
+    // ===============================================
+
+    async generateAdviceOptions(weatherData, adviceContext = {}) {
+        try {
+            console.log('🤖 Gerando opções de conselhos com AI baseadas no contexto');
+
+            if (!this.token) {
+                return this.generateBasicAdviceOptions(weatherData, adviceContext);
+            }
+
+            const prompt = this.buildAdviceOptionsPrompt(weatherData, adviceContext);
+            const response = await this.callOpenAI(prompt, 0.7);
+
+            // Parse da resposta JSON
+            const options = JSON.parse(response);
+
+            return {
+                success: true,
+                options: options.options || [],
+                method: 'ai_powered'
+            };
+
+        } catch (error) {
+            console.error('❌ Erro ao gerar opções de conselhos:', error.message);
+            return {
+                success: true,
+                options: this.generateBasicAdviceOptions(weatherData, adviceContext),
+                method: 'fallback'
+            };
+        }
+    }
+
+    buildAdviceOptionsPrompt(weatherData, adviceContext) {
+        const temp = parseInt(weatherData.temperature);
+        const city = weatherData.city;
+        const condition = weatherData.description;
+        const { lastAdviceType, userExpertise } = adviceContext;
+
+        return `${this.getBotIdentityContext()}
+
+SITUAÇÃO ATUAL:
+- Cidade: ${city}
+- Temperatura: ${temp}°C
+- Condição: ${condition}
+- Último conselho dado: ${lastAdviceType || 'primeiro conselho'}
+- Nível do usuário: ${userExpertise || 'básico'}
+
+INSTRUÇÕES PARA GERAR OPÇÕES DE CONSELHOS:
+Cria 5-8 opções de conselhos relacionados ao clima que o usuário poderia querer saber mais. Cada opção deve ter:
+- id: identificador único (sem espaços, use _)
+- title: título curto (máximo 24 caracteres)
+- description: descrição útil (máximo 72 caracteres)
+
+CONTEXTO BASEADO NA TEMPERATURA:
+${this.getAdviceOptionsGuidanceByTemperature(temp, condition)}
+
+TIPOS DE CONSELHOS ÚTEIS:
+- Saúde e bem-estar relacionados ao clima
+- Atividades específicas para o tempo atual  
+- Cuidados com roupas e equipamentos
+- Preparação para mudanças climáticas
+- Dicas de segurança
+- Conselhos para diferentes momentos do dia
+- Recomendações para casa/trabalho
+- Dicas para crianças/idosos
+
+FORMATO DE RESPOSTA (JSON):
+{
+    "options": [
+        {
+            "id": "exemplo_conselho",
+            "title": "🌡️ Título Curto",
+            "description": "Descrição útil e específica para o contexto atual"
+        }
+    ]
+}
+
+REGRAS IMPORTANTES:
+- Máximo 8 opções
+- Títulos com emojis relevantes
+- Específico para ${temp}°C em ${city}
+- Português moçambicano natural
+- Evitar repetir o tipo de conselho já dado
+- Opções práticas e acionáveis
+
+Minha resposta JSON:`;
+    }
+
+    getAdviceOptionsGuidanceByTemperature(temperature, condition) {
+        const isRaining = condition.toLowerCase().includes('chuva');
+
+        if (isRaining) {
+            return `ESTÁ CHUVA: Foca em conselhos sobre proteção contra chuva, atividades internas, prevenção de doenças, cuidados com equipamentos eletrônicos.`;
+        } else if (temperature > 32) {
+            return `MUITO QUENTE: Foca em hidratação, proteção solar, resfriamento, prevenção de insolação, roupas adequadas, horários seguros.`;
+        } else if (temperature > 25) {
+            return `TEMPERATURA AGRADÁVEL: Foca em atividades ao ar livre, exercícios, passeios, cuidados gerais, aproveitamento do bom tempo.`;
+        } else if (temperature > 18) {
+            return `FRESCO: Foca em roupas em camadas, atividades indoor/outdoor, cuidados com mudanças de temperatura, conforto térmico.`;
+        } else {
+            return `FRIO: Foca em aquecimento, roupas quentes, prevenção de resfriados, cuidados com idosos/crianças, segurança.`;
+        }
+    }
+
+    generateBasicAdviceOptions(weatherData, adviceContext) {
+        const temp = parseInt(weatherData.temperature);
+        const options = [
+            {
+                id: "cuidados_saude",
+                title: "🏥 Cuidados de Saúde",
+                description: `Como manter a saúde com ${temp}°C`
+            },
+            {
+                id: "atividades_recomendadas",
+                title: "🎯 Atividades Ideais",
+                description: `O que fazer com este tempo`
+            },
+            {
+                id: "preparacao_mudancas",
+                title: "🌤️ Mudanças do Tempo",
+                description: "Como se preparar para mudanças"
+            },
+            {
+                id: "dicas_seguranca",
+                title: "⚠️ Dicas de Segurança",
+                description: "Cuidados importantes para hoje"
+            },
+            {
+                id: "conselhos_casa",
+                title: "🏠 Dicas para Casa",
+                description: "Conselhos para o ambiente doméstico"
+            }
+        ];
+
+        // Adicionar opções específicas baseadas na temperatura
+        if (temp > 30) {
+            options.push({
+                id: "combater_calor",
+                title: "🌞 Combater o Calor",
+                description: "Técnicas avançadas de resfriamento"
+            });
+        } else if (temp < 20) {
+            options.push({
+                id: "manter_aquecido",
+                title: "🧥 Manter-se Aquecido",
+                description: "Estratégias para dias frios"
+            });
+        }
+
+        return options;
     }
 
     clearAllCaches() {
