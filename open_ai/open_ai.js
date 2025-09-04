@@ -6,7 +6,7 @@ class OPENAI {
     constructor() {
         this.token = process.env.OPEN_AI;
         this.baseURL = 'https://api.openai.com/v1';
-        this.model = 'gpt-3.5-turbo';
+        this.model = 'gpt-4o-mini';
         this.maxTokens = 300;
 
         // Inicializar handler de sugestões 100% AI

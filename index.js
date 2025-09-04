@@ -938,19 +938,19 @@ async function handleAdvancedWeatherData(analysis, phoneNumber, user) {
     if (timeframe === 'amanha') {
       // Buscar previsão para amanhã
       const forecast = await weatherService.getWeatherForecast(targetCity, 2);
-      if (forecast && forecast.length > 1) {
-        const tomorrowData = forecast[1]; // Índice 1 = amanhã
+      if (forecast && forecast.forecasts && forecast.forecasts.length > 1) {
+        const tomorrowData = forecast.forecasts[1]; // Índice 1 = amanhã
         weatherData = {
-          city: targetCity,
+          city: forecast.city,
           temperature: Math.round((tomorrowData.maxTemp + tomorrowData.minTemp) / 2),
           maxTemp: tomorrowData.maxTemp,
           minTemp: tomorrowData.minTemp,
           description: tomorrowData.description,
           icon: tomorrowData.icon,
-          units: user?.units === 'fahrenheit' ? '°F' : '°C',
+          units: forecast.units,
           date: tomorrowData.date,
           isForecast: true,
-          source: 'Forecast'
+          source: forecast.source
         };
       } else {
         throw new Error('Não foi possível obter a previsão para amanhã');
@@ -1091,33 +1091,42 @@ async function handleWeeklyForecast(city, phoneNumber, user) {
     // Buscar previsão de 7 dias
     const forecast = await weatherService.getWeatherForecast(city, 7);
 
-    if (!forecast || forecast.length === 0) {
+    if (!forecast || !forecast.forecasts || forecast.forecasts.length === 0) {
       throw new Error('Não foi possível obter a previsão de 7 dias');
     }
 
     // Gerar resposta baseada no nível do usuário
     const expertiseLevel = user?.expertise_level || 'basic';
-    let message = `📅 *Previsão de 7 dias - ${city}*\n\n`;
+    let message = `📅 *Previsão de 7 dias - ${forecast.city}*\n\n`;
 
     if (expertiseLevel === 'basic') {
       // Versão simples
-      forecast.forEach((day, index) => {
-        const dayName = index === 0 ? 'Hoje' :
+      forecast.forecasts.forEach((day, index) => {
+        const dayName = day.dayName || (index === 0 ? 'Hoje' :
           index === 1 ? 'Amanhã' :
-            `${new Date(day.date).toLocaleDateString('pt-BR', { weekday: 'short' })}`;
+            `${new Date(day.date).toLocaleDateString('pt-BR', { weekday: 'short' })}`);
 
-        message += `${dayName}: ${day.minTemp}°C - ${day.maxTemp}°C, ${day.description}\n`;
+        message += `${dayName}: ${day.minTemp}${forecast.units} - ${day.maxTemp}${forecast.units}, ${day.description}\n`;
       });
     } else {
       // Versão mais detalhada
-      forecast.forEach((day, index) => {
-        const dayName = index === 0 ? 'Hoje' :
+      forecast.forecasts.forEach((day, index) => {
+        const dayName = day.dayName || (index === 0 ? 'Hoje' :
           index === 1 ? 'Amanhã' :
-            new Date(day.date).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric' });
+            new Date(day.date).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric' }));
 
         message += `📊 *${dayName}*\n`;
-        message += `🌡️ ${day.minTemp}°C - ${day.maxTemp}°C\n`;
-        message += `☀️ ${day.description}\n\n`;
+        message += `🌡️ ${day.minTemp}${forecast.units} - ${day.maxTemp}${forecast.units}\n`;
+        message += `☀️ ${day.description}\n`;
+
+        if (day.humidity) {
+          message += `💧 ${day.humidity}%\n`;
+        }
+        if (day.chanceOfRain && day.chanceOfRain > 0) {
+          message += `🌧️ ${day.chanceOfRain}%\n`;
+        }
+
+        message += `\n`;
       });
     }
 
@@ -2394,26 +2403,39 @@ async function handleForecastRequest(phoneNumber, days = 7) {
 
     const forecastData = await weatherService.getWeatherForecast(city, days);
 
-    if (forecastData && forecastData.length > 0) {
-      let forecastMessage = `📅 *Previsão de ${days} dias para ${city}*\n\n`;
+    if (forecastData && forecastData.forecasts && forecastData.forecasts.length > 0) {
+      let forecastMessage = `📅 *Previsão de ${days} dias para ${forecastData.city}*\n\n`;
 
-      forecastData.slice(0, days).forEach((day, index) => {
+      forecastData.forecasts.slice(0, days).forEach((day, index) => {
         const emoji = getWeatherEmoji(day.description);
-        const date = new Date(day.date);
-        const dayName = index === 0 ? 'Hoje' : index === 1 ? 'Amanhã' : date.toLocaleDateString('pt-MZ', { weekday: 'long' });
+        const dayName = day.dayName || (index === 0 ? 'Hoje' : index === 1 ? 'Amanhã' :
+          new Date(day.date).toLocaleDateString('pt-MZ', { weekday: 'long' }));
 
         forecastMessage += `${emoji} *${dayName}*\n`;
-        forecastMessage += `   🌡️ ${day.minTemp}°C - ${day.maxTemp}°C\n`;
+        forecastMessage += `   🌡️ ${day.minTemp}${forecastData.units} - ${day.maxTemp}${forecastData.units}\n`;
         forecastMessage += `   ${day.description}\n`;
+
+        // Adicionar informações extras se disponíveis
+        if (day.humidity) {
+          forecastMessage += `   💧 Umidade: ${day.humidity}%\n`;
+        }
+        if (day.chanceOfRain && day.chanceOfRain > 0) {
+          forecastMessage += `   🌧️ Chuva: ${day.chanceOfRain}%\n`;
+        }
+        if (day.windSpeed && day.windSpeed > 0) {
+          forecastMessage += `   💨 Vento: ${day.windSpeed} km/h\n`;
+        }
+
         forecastMessage += `\n`;
       });
 
       forecastMessage += `\n💡 *Dica da Joana Bot:* Planifica as tuas atividades baseado nesta previsão!`;
+      forecastMessage += `\n📊 _Dados fornecidos por ${forecastData.source}_`;
 
       await whatsappApi.enviarMensagemUsandoWhatsappAPI(forecastMessage, phoneNumber);
     } else {
       await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-        `❌ Eh pá, não consegui obter a previsão para ${city}. Tenta novamente mais tarde.`,
+        `❌ Eh pá, não consegui obter a previsão para ${city}. Verifica se o nome da cidade está correto e tenta novamente.`,
         phoneNumber
       );
     }
@@ -2733,14 +2755,14 @@ async function handleWeatherChangesPreparationRequest(phoneNumber) {
     const forecastData = await weatherService.getWeatherForecast(city, 3);
     const currentWeather = await weatherService.getCurrentWeather(city);
 
-    let preparationMessage = `🌤️ *Preparação para Mudanças do Tempo em ${city}*\n\n`;
+    let preparationMessage = `🌤️ *Preparação para Mudanças do Tempo em ${forecastData.city || city}*\n\n`;
     preparationMessage += `📊 *Situação Atual:* ${currentWeather.temperature}°C, ${currentWeather.description}\n\n`;
 
-    if (forecastData && forecastData.length > 1) {
+    if (forecastData && forecastData.forecasts && forecastData.forecasts.length > 1) {
       preparationMessage += `📅 *Próximos Dias:*\n`;
-      forecastData.slice(1, 3).forEach((day, index) => {
+      forecastData.forecasts.slice(1, 3).forEach((day, index) => {
         const dayName = index === 0 ? 'Amanhã' : 'Depois de amanhã';
-        preparationMessage += `• ${dayName}: ${day.minTemp}°C-${day.maxTemp}°C, ${day.description}\n`;
+        preparationMessage += `• ${dayName}: ${day.minTemp}${forecastData.units}-${day.maxTemp}${forecastData.units}, ${day.description}\n`;
       });
 
       preparationMessage += `\n💡 *Recomendações:*\n`;
@@ -3878,8 +3900,8 @@ async function handleRainSpecificQuery(analysis, phoneNumber, user) {
     if (timeframe === 'amanha' || originalMessage.toLowerCase().includes('amanhã')) {
       isForTomorrow = true;
       const forecast = await weatherService.getWeatherForecast(targetCity, 2);
-      if (forecast && forecast.length > 1) {
-        weatherData = forecast[1]; // Amanhã
+      if (forecast && forecast.forecasts && forecast.forecasts.length > 1) {
+        weatherData = forecast.forecasts[1]; // Amanhã
       } else {
         throw new Error('Não foi possível obter a previsão para amanhã');
       }
