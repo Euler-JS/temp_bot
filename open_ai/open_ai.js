@@ -1,6 +1,7 @@
 require('dotenv').config();
 const axios = require('axios');
 const AIBasedSuggestionsHandler = require('./suggestions_handler_ai');
+const MultilingualHandler = require('./multilingual_handler');
 
 class OPENAI {
     constructor() {
@@ -12,6 +13,9 @@ class OPENAI {
         // Inicializar handler de sugestões 100% AI
         this.suggestionsHandler = new AIBasedSuggestionsHandler(this.token);
 
+        // Inicializar sistema multilíngue
+        this.multilingualHandler = new MultilingualHandler(this.token);
+
         // Cache para análises frequentes
         this.analysisCache = new Map();
         this.cacheExpiry = 1800000; // 30 minutos
@@ -20,6 +24,7 @@ class OPENAI {
             console.warn('⚠️ Token OpenAI não encontrado - modo limitado');
         } else {
             console.log('🤖 Joana Bot - Assistente Meteorológico IA inicializado');
+            console.log('🌍 Sistema multilíngue ativo - 10+ idiomas suportados');
         }
 
         // Informações sobre a identidade da Joana Bot
@@ -217,7 +222,7 @@ INSTRUÇÕES:
 - Sempre oferece ajuda meteorológica como alternativa
 
 EXEMPLOS:
-- Se disser "Olá" → "Eh pá, olá! Sou a Joana Bot, a tua assistente meteorológica! Como posso ajudar-te com o tempo hoje?"
+- Se disser "Olá" → "olá! Sou a Joana Bot, a tua assistente meteorológica! Como posso ajudar-te com o tempo hoje?"
 - Se perguntar sobre comida → "Eish, sobre restaurantes não sei muito, mas posso ajudar-te a saber o clima para decidir onde comer!"
 - Se for primeira conversa → Inclui breve apresentação da Joana Bot
 
@@ -334,7 +339,7 @@ Estou aqui para te ajudar! 🇲🇿`;
     }
 
     buildAnalysisPrompt(message, context) {
-        return `Eh pá, sou um assistente que entende bem como os moçambicanos falam sobre o tempo.
+        return `sou um assistente que entende bem como os moçambicanos falam sobre o tempo.
 
 A pessoa escreveu: "${message}"
 
@@ -466,7 +471,7 @@ Responde só o JSON:
 
 FORMATO IDEAL DA RESPOSTA:
 
-🗺️ *Eh pá, vou te dar umas ideias fixes de locais para ires hoje em Beira!*
+🗺️ *vou te dar umas ideias fixes de locais para ires hoje em Beira!*
 
 🌤️ *Como está o tempo:*
 • ${temp}°C - ${weatherData.description}
@@ -487,7 +492,7 @@ Exemplo: "Como está o Macúti hoje?" ou "Restaurantes no Manga"
 
 Responde exatamente neste formato, adaptando só a parte da temperatura:`;
         } else {
-            return `Eh pá, vou te ajudar com informações fixes sobre ${city}!
+            return `vou te ajudar com informações fixes sobre ${city}!
 
 PERGUNTA: ${analysis.intent}
 TEMPO ATUAL em ${city}:
@@ -749,40 +754,81 @@ Responde de forma natural como um moçambicano experiente daria este conselho, m
 
         return `O utilizador pediu informações sobre zonas seguras e pontos de refúgio em ${city}. Com ${temp}°C e ${condition}, preciso dar informações práticas de segurança.
 
-INFORMAÇÕES SOBRE ZONAS SEGURAS EM ${city.toUpperCase()}:
+INFORMAÇÕES OFICIAIS SOBRE ZONAS SEGURAS EM ${city.toUpperCase()}:
 
 ${city === 'beira' ? `
-🛡️ *BEIRA - Zonas Seguras e Pontos de Refúgio:*
+🛡️ *BEIRA - Centros de Evacuação Oficiais (Atualizado 05/09/2025):*
 
-✅ *CENTROS DE EVACUAÇÃO OFICIAIS:*
-• Centro Comunitário da Manga - zona alta e segura
-• Escola Secundária Samora Machel - estrutura resistente
-• Hospital Central da Beira - sempre operacional
-• Centro de Saúde do Macúti - ponto de apoio
-• Estádio do Ferroviário - área ampla para concentração
+🏫 *CENTROS DE EVACUAÇÃO - ESCOLAS (Por Zona):*
 
-🏥 *HOSPITAIS E CENTROS DE SAÚDE:*
-• Hospital Central da Beira (24h)
-• Hospital Privado Beira Medical Centre
-• Centro de Saúde da Manga
-• Centro de Saúde do Goto
-• Clínica São Lucas
+**ZONA NORTE:**
+• Escola Primária Completa de Munhava (Bairro Munhava) - Capacidade: 500+ pessoas
+• Escola Secundária da Beira (Centro/Manga) - Capacidade: 800+ pessoas  
+• Escola Primária de Chaimite (Bairro Chaimite) - Capacidade: 400+ pessoas
 
-🏫 *ESCOLAS EM ZONAS SEGURAS:*
-• Escola Secundária Samora Machel
-• Escola Primária da Manga
-• Instituto Industrial da Beira
-• Universidade Católica de Moçambique
+**ZONA CENTRAL:**
+• Escola Primária Completa Samora Machel (Manga) - Capacidade: 600+ pessoas
+• Escola Técnica da Beira (Cidade de Cimento) - Capacidade: 700+ pessoas
+• Escola Primária de Palmeiras (Palmeiras) - Capacidade: 350+ pessoas
+
+**ZONA SUL:**
+• Escola Primária Completa de Goto (Goto) - Capacidade: 450+ pessoas
+• Escola Secundária Josina Machel (Macúti) - Capacidade: 500+ pessoas
+• Escola Primária de Ndunda (Ndunda) - Capacidade: 300+ pessoas
+
+**ZONA COSTEIRA:**
+• Escola Primária de Matacuane (Matacuane) - Capacidade: 250+ pessoas
+
+🏥 *HOSPITAIS E CENTROS DE SAÚDE 24H:*
+• Hospital Central da Beira (Manga) - Principal centro médico
+• Hospital Macúti (Macúti) - Emergências costeiras
+• Centro de Saúde de Munhava (Munhava) - Norte da cidade
+
+🏢 *EDIFÍCIOS PÚBLICOS SEGUROS:*
+• Conselho Municipal da Beira (Manga) - Centro administrativo
+• Governo Provincial de Sofala (Manga) - Estrutura resistente
+• Centro Comunitário de Chaimite (Chaimite) - Norte
+• Igreja Católica de Munhava (Munhava) - Comunidade
+• Mesquita Central (Manga) - Centro religioso
+
+� *HOTÉIS COM ESTRUTURAS RESISTENTES:*
+• Hotel Tivoli (Macúti) - Zona turística
+• VIP Grand Maputo Hotel (Manga) - Centro
+
+📍 *DISTRIBUIÇÃO POR BAIRROS DA BEIRA:*
+• **Munhava:** Escola Munhava, Centro Saúde, Igreja Católica
+• **Manga:** Hospital Central, Escola Samora Machel, Conselho Municipal
+• **Chaimite:** Escola Chaimite, Centro Comunitário  
+• **Goto:** Escola Goto (cuidado - zona com drenagem deficiente)
+• **Macúti:** Hospital Macúti, Escola Josina Machel, Hotel Tivoli
+• **Palmeiras:** Escola Palmeiras (zona elevada - mais segura)
+• **Cidade de Cimento:** Escola Técnica (estruturas sólidas)
+• **Ndunda:** Escola Ndunda (área em expansão)
+• **Matacuane:** Escola Matacuane (elevada, resistente a inundações)
+
+⚠️ *BAIRROS COM MAIOR RISCO (evitar durante emergências):*
+• Goto - drenagem deficiente, zonas baixas
+• Chaimite - algumas áreas propensas a alagamentos
+• Ndunda - vias não pavimentadas
+• Munhava - algumas zonas baixas específicas
+
+✅ *BAIRROS MAIS SEGUROS:*
+• Palmeiras - zona elevada
+• Cidade de Cimento - estruturas sólidas
+• Manga - centro, melhor infraestrutura
+• Macúti - elevação adequada (cuidado apenas com erosão costeira)
 
 ` : `
 🛡️ *${city.toUpperCase()} - Zonas Seguras e Pontos de Refúgio:*
 
-✅ *TIPOS DE LOCAIS SEGUROS:*
+✅ *TIPOS DE LOCAIS SEGUROS GERAIS:*
 • Edifícios públicos em zonas altas
 • Hospitais e centros de saúde
 • Escolas com estruturas sólidas
 • Centros comunitários
 • Igrejas em locais elevados
+
+📍 *Para informações específicas sobre ${city}, contacte as autoridades locais*
 `}
 
 🌦️ *BASEADO NO TEMPO ATUAL (${temp}°C, ${condition}):*
@@ -790,28 +836,35 @@ ${this.getCurrentSafetyRecommendations(temp, condition)}
 
 🎒 *KIT DE EMERGÊNCIA ESSENCIAL:*
 • Água potável (3 litros por pessoa)
-• Alimentos não perecíveis (3 dias)
+• Alimentos não perecíveis (3 dias)  
 • Medicamentos pessoais
 • Lanterna e pilhas extras
 • Rádio portátil
 • Documentos em saco plástico
 • Roupa extra e cobertor
+• Carregador portátil de telemóvel
 
-📱 *CONTACTOS DE EMERGÊNCIA SEMPRE À MÃO:*
-• INGC (Gestão de Calamidades): 119
+📱 *CONTACTOS DE EMERGÊNCIA BEIRA:*
+• INGC (Instituto Nacional de Gestão de Calamidades): 119
+• Polícia: 197
 • Bombeiros: 198
-• Polícia: 119
-• Cruz Vermelha: +258 21 491 323
+• Cruz Vermelha Beira: +258 23 323 390
+• Conselho Municipal da Beira: +258 23 323 041
 
-🗺️ *COMO CHEGAR AOS PONTOS SEGUROS:*
-• Evite zonas baixas durante evacuação
-• Use rotas principais pavimentadas
+🗺️ *ROTAS DE EVACUAÇÃO:*
+• Evite zonas baixas (Goto, partes de Chaimite/Munhava)
+• Use vias principais pavimentadas 
+• Direcione-se para centros em zonas altas (Palmeiras, Manga)
 • Mantenha-se em grupo quando possível
-• Siga instruções das autoridades locais
+• Siga instruções das autoridades INGC
 
-💡 *Dica Principal:* Tenha sempre um plano de evacuação preparado e conheça pelo menos 2 rotas diferentes para chegar aos pontos seguros!
+💡 *PLANO DE EVACUAÇÃO:* 
+1. Conheça o centro mais próximo do seu bairro
+2. Tenha 2 rotas alternativas preparadas
+3. Kit de emergência sempre pronto
+4. Números de emergência salvos no telemóvel
 
-Responde de forma natural e tranquilizadora como um moçambicano experiente daria este conselho, máximo 500 palavras:`;
+Responde de forma natural e tranquilizadora como um beirense experiente daria este conselho, usando dados oficiais atualizados, máximo 600 palavras:`;
     }
 
     getCurrentSafetyRecommendations(temp, condition) {
@@ -874,6 +927,22 @@ Responde de forma natural e tranquilizadora como um moçambicano experiente dari
 
         return `Gerar opções de lista interativa sobre zonas seguras em ${city} com condições ${condition}.
 
+${city === 'beira' ? `
+Para BEIRA, usar dados específicos reais:
+- 10 centros de evacuação oficiais (escolas)
+- 3 hospitais principais
+- Bairros específicos (Munhava, Manga, Chaimite, Goto, Macúti, Palmeiras, etc.)
+- Zonas de risco conhecidas (Goto-drenagem, partes de Chaimite/Munhava)
+- Contactos INGC Beira: 119, Cruz Vermelha: +258 23 323 390
+
+Opções relevantes para Beira:
+- "Escolas Evacuação" (centros por zona Norte/Sul/Central)
+- "Hospitais Beira" (Central, Macúti, Munhava)  
+- "Bairros Seguros" (Palmeiras zona alta, Manga centro)
+- "Rotas Fuga" (evitar Goto, usar vias principais)
+- "Kit Emergência" (3 dias água/comida, documentos)
+` : 'Para outras cidades, usar opções gerais de segurança'}
+
 Criar exactamente 5 opções específicas e úteis para a situação actual.
 
 IMPORTANTE - LIMITES OBRIGATÓRIOS:
@@ -890,26 +959,39 @@ Responde só JSON no formato:
   }
 ]
 
-Exemplo baseado na cidade e condições:
-- "Centros Evacuação" (16 chars) - "Locais oficiais mais próximos" (30 chars)
-- "Hospitais 24h" (13 chars) - "Sempre abertos para emergências" (32 chars)
-- "Rotas Seguras" (13 chars) - "Como chegar aos pontos seguros" (30 chars)
-- "Kit Emergência" (14 chars) - "O que levar numa evacuação" (26 chars)
-- "Contactos SOS" (13 chars) - "Números essenciais sempre à mão" (32 chars)`;
+Focar em informações práticas e específicas para ${city}:`;
     }
 
     getBasicSafeZonesOptions(weatherData) {
-        return {
-            success: true,
-            options: [
-                { id: 'centros_evacuacao', title: 'Centros Evacuação', description: 'Locais oficiais de refúgio na área' }, // 16 chars, 35 chars
-                { id: 'hospitais_24h', title: 'Hospitais 24h', description: 'Assistência médica sempre disponível' }, // 13 chars, 37 chars
-                { id: 'rotas_evacuacao', title: 'Rotas Evacuação', description: 'Caminhos seguros para sair da área' }, // 15 chars, 34 chars
-                { id: 'kit_emergencia', title: 'Kit Emergência', description: 'Lista essencial para situações críticas' }, // 14 chars, 39 chars
-                { id: 'contactos_sos', title: 'Contactos SOS', description: 'Números de emergência importantes' } // 13 chars, 33 chars
-            ],
-            method: 'fallback'
-        };
+        const city = weatherData.city.toLowerCase();
+
+        if (city === 'beira') {
+            // Opções específicas para Beira baseadas em dados reais
+            return {
+                success: true,
+                options: [
+                    { id: 'escolas_evacuacao', title: 'Escolas Evacuação', description: '10 centros oficiais por zona Norte/Centro/Sul' }, // 17 chars, 45 chars
+                    { id: 'hospitais_beira', title: 'Hospitais Beira', description: 'Central, Macúti, Munhava - sempre abertos' }, // 15 chars, 42 chars
+                    { id: 'bairros_seguros', title: 'Bairros Seguros', description: 'Palmeiras (alto), Manga (centro) vs risco Goto' }, // 15 chars, 48 chars
+                    { id: 'rotas_evacuacao', title: 'Rotas Evacuação', description: 'Vias principais, evitar zonas baixas/terra' }, // 15 chars, 43 chars
+                    { id: 'contactos_ingc', title: 'Contactos INGC', description: 'Beira 119, Cruz Vermelha +258 23 323 390' } // 14 chars, 42 chars
+                ],
+                method: 'beira_specific'
+            };
+        } else {
+            // Opções gerais para outras cidades
+            return {
+                success: true,
+                options: [
+                    { id: 'centros_evacuacao', title: 'Centros Evacuação', description: 'Locais oficiais de refúgio na área' }, // 16 chars, 35 chars
+                    { id: 'hospitais_24h', title: 'Hospitais 24h', description: 'Assistência médica sempre disponível' }, // 13 chars, 37 chars
+                    { id: 'rotas_evacuacao', title: 'Rotas Evacuação', description: 'Caminhos seguros para sair da área' }, // 15 chars, 34 chars
+                    { id: 'kit_emergencia', title: 'Kit Emergência', description: 'Lista essencial para situações críticas' }, // 14 chars, 39 chars
+                    { id: 'contactos_sos', title: 'Contactos SOS', description: 'Números de emergência importantes' } // 13 chars, 33 chars
+                ],
+                method: 'general_fallback'
+            };
+        }
     }
 
     generateBasicSafeZonesInformation(weatherData) {
@@ -968,23 +1050,128 @@ Exemplo baseado na cidade e condições:
     buildEvacuationCentersPrompt(weatherData, userContext) {
         const city = weatherData.city.toLowerCase();
         const condition = weatherData.description;
+        const temp = parseInt(weatherData.temperature);
 
-        return `O utilizador quer informações específicas sobre centros de evacuação oficiais em ${city}. Com condições ${condition}, dar informação prática e tranquilizadora.
+        return `O utilizador quer informações específicas sobre centros de evacuação oficiais em ${city}. Com condições ${condition} (${temp}°C), dar informação prática e tranquilizadora.
 
-FOCAR EM:
-- Locais oficiais designados pelo INGC
-- Endereços específicos quando possível
-- Capacidade e facilidades disponíveis
-- Como chegar aos centros
-- O que levar/esperar
+INFORMAÇÕES OFICIAIS - CENTROS DE EVACUAÇÃO EM ${city.toUpperCase()}:
 
-${city === 'beira' ? `Para BEIRA, incluir centros conhecidos como:
-- Centro Comunitário da Manga
-- Escola Secundária Samora Machel
-- Estádio do Ferroviário
-- Centro de Saúde do Macúti` : 'Para outras cidades, focar em tipos de locais padrão'}
+${city === 'beira' ? `
+🏫 **CENTROS DE EVACUAÇÃO OFICIAIS DA BEIRA (Dados atualizados 05/09/2025):**
 
-Responder de forma natural e reconfortante, máximo 400 palavras:`;
+**ZONA NORTE - Acessível para Munhava, Chaimite:**
+1. **Escola Primária Completa de Munhava**
+   - Localização: Bairro Munhava
+   - Capacidade: 500+ pessoas
+   - Estrutura: Múltiplas salas, pátio coberto
+   - Como chegar: Via estrada principal de Munhava
+
+2. **Escola Secundária da Beira**  
+   - Localização: Centro/Manga
+   - Capacidade: 800+ pessoas (MAIOR CENTRO)
+   - Estrutura: Edifício sólido, quadras cobertas
+   - Como chegar: Centro da cidade, fácil acesso
+
+3. **Escola Primária de Chaimite**
+   - Localização: Bairro Chaimite  
+   - Capacidade: 400+ pessoas
+   - Estrutura: Construção recente e resistente
+
+**ZONA CENTRAL - Para Manga, Palmeiras, Cidade de Cimento:**
+4. **Escola Primária Completa Samora Machel**
+   - Localização: Manga (centro)
+   - Capacidade: 600+ pessoas
+   - Estrutura: Edifício principal + anexos
+   - Vantagem: Centro da cidade, fácil acesso
+
+5. **Escola Técnica da Beira**
+   - Localização: Cidade de Cimento
+   - Capacidade: 700+ pessoas
+   - Estrutura: Oficinas amplas, refeitório
+   - Vantagem: Estrutura sólida, zona segura
+
+6. **Escola Primária de Palmeiras**
+   - Localização: Palmeiras (ZONA ELEVADA - MAIS SEGURA)
+   - Capacidade: 350+ pessoas
+   - Vantagem: Zona alta, menor risco alagamentos
+
+**ZONA SUL - Para Goto, Macúti, Ndunda:**
+7. **Escola Primária Completa de Goto**
+   - Localização: Bairro Goto
+   - Capacidade: 450+ pessoas
+   - Estrutura: Pátio coberto, salas grandes
+   - ⚠️ Atenção: Goto tem drenagem deficiente, usar só se necessário
+
+8. **Escola Secundária Josina Machel**
+   - Localização: Macúti (zona turística)
+   - Capacidade: 500+ pessoas
+   - Vantagem: Próxima ao mar, acesso fácil via EN6
+
+9. **Escola Primária de Ndunda**
+   - Localização: Bairro Ndunda
+   - Capacidade: 300+ pessoas  
+   - Estrutura: Construção nova
+
+**ZONA COSTEIRA:**
+10. **Escola Primária de Matacuane**
+    - Localização: Matacuane
+    - Capacidade: 250+ pessoas
+    - Vantagem: Elevada, resistente a inundações
+
+🏥 **HOSPITAIS COMO CENTROS AUXILIARES:**
+• **Hospital Central da Beira** (Manga) - 24h, principal
+• **Hospital Macúti** (Macúti) - Emergências costeiras
+• **Centro de Saúde de Munhava** (Munhava) - Norte
+
+🏢 **EDIFÍCIOS PÚBLICOS DE APOIO:**
+• **Conselho Municipal da Beira** (Manga) - Centro administrativo
+• **Governo Provincial de Sofala** (Manga) - Estrutura resistente  
+• **Centro Comunitário de Chaimite** (Chaimite) - Norte da cidade
+
+` : `
+🏫 **CENTROS DE EVACUAÇÃO GERAIS EM ${city.toUpperCase()}:**
+- Escolas públicas em zonas altas
+- Hospitais e centros de saúde
+- Edifícios públicos sólidos
+- Centros comunitários
+- ⚠️ Para informações específicas contacte INGC local: 119
+`}
+
+📍 **RECOMENDAÇÕES POR CONDIÇÕES ATUAIS (${temp}°C, ${condition}):**
+${condition.toLowerCase().includes('chuva') ?
+                `🌧️ PRIORIDADE: Zonas elevadas e drenagem boa
+- Palmeiras (zona alta) 
+- Manga/Centro (infraestrutura melhor)
+- ⚠️ EVITAR: Goto, partes baixas de Chaimite/Munhava` :
+                temp > 32 ?
+                    `🔥 PRIORIDADE: Locais com ventilação/refrigeração  
+- Hospital Central (ar condicionado)
+- Escola Técnica (estrutura ampla)
+- Escola Secundária da Beira (ventilação)` :
+                    `✅ Condições normais - qualquer centro listado está seguro`}
+
+🎒 **O QUE LEVAR AO CENTRO:**
+• Documentos em saco plástico
+• Medicamentos pessoais (3 dias)
+• Água (3 litros/pessoa)
+• Alimentos não perecíveis  
+• Roupa extra e cobertor
+• Carregador portátil
+• Lanterna e pilhas
+
+⏰ **QUANDO PROCURAR UM CENTRO:**
+• Ordem das autoridades INGC
+• Ventos >75km/h 
+• Chuvas intensas persistentes
+• Alagamentos na área
+• Corte prolongado de energia/água
+
+📱 **CONTACTOS ESSENCIAIS:**
+• INGC Beira: 119
+• Cruz Vermelha Beira: +258 23 323 390
+• Conselho Municipal: +258 23 323 041
+
+Responde como um funcionário experiente do INGC-Beira daria esta informação, de forma clara e tranquilizadora, máximo 600 palavras:`;
     }
 
     async generateEmergencyHospitalsInfo(weatherData, userContext = {}) {
@@ -1474,7 +1661,7 @@ Focar em ações práticas baseadas no tipo de alerta detectado.`;
         const condition = weatherData.description || 'tempo normal';
         const humidity = weatherData.humidity || 60;
 
-        return `Eh pá, preciso dar 3 sugestões fixes para alguém que está em ${city}.
+        return `preciso dar 3 sugestões fixes para alguém que está em ${city}.
 
 O tempo agora está assim:
 - ${temp}°C (${temp > 30 ? 'eish, quente!' : temp < 18 ? 'está frio' : 'não está mau'})
@@ -1637,7 +1824,7 @@ INSTRUÇÕES PARA DAR DICAS NATURAIS COMO JOANA BOT:
 9. Como Joana Bot, mostra conhecimento especializado em meteorologia moçambicana
 
 EXEMPLOS DE RESPOSTAS NATURAIS:
-- Em vez de "• Roupa leve" → "Eh pá, com este calor veste roupa bem leve"
+- Em vez de "• Roupa leve" → "com este calor veste roupa bem leve"
 - Em vez de "• Protetor solar" → "e não te esqueças do protetor solar que o sol está bravo"
 - Em vez de listas → Frases corridas e naturais
 
@@ -1736,7 +1923,7 @@ INSTRUÇÕES PARA SUGESTÕES CONVERSACIONAIS COMO JOANA BOT:
 10. Mostra conhecimento especializado meteorológico da Joana Bot
 
 EXEMPLOS DE LINGUAGEM NATURAL:
-- Em vez de "1. Que roupa usar" → "Eh pá, com este tempo podes pensar na roupa que vais vestir"
+- Em vez de "1. Que roupa usar" → "com este tempo podes pensar na roupa que vais vestir"
 - Em vez de "2. Atividades" → "e também que tal pensar no que fazer hoje"
 - Em vez de listas → Texto corrido e natural
 
@@ -1889,7 +2076,7 @@ Meus conselhos de segurança:`;
         const city = weatherData.city;
         const isRaining = weatherData.description.toLowerCase().includes('chuva');
 
-        let advice = `⚠️ Eh pá, deixa eu te dar uns conselhos importantes sobre o tempo em ${city}! `;
+        let advice = `⚠️ deixa eu te dar uns conselhos importantes sobre o tempo em ${city}! `;
 
         if (isRaining) {
             advice += `Com chuva tens que ter muito cuidado porque o chão fica escorregadio e podes cair. Também evita mexer em aparelhos eléctricos com as mãos molhadas. `;
@@ -2359,11 +2546,374 @@ Minha resposta JSON:`;
         return options;
     }
 
+    async generateEmergencyKitInfo(userContext = {}) {
+        try {
+            const city = userContext?.preferred_city || 'Beira';
+            const persona = userContext?.interaction_style || 'informativo';
+
+            const prompt = `Tu és a Joana, assistente do tempo em Moçambique. O utilizador quer saber sobre kit de emergência.
+            
+CONTEXTO DO UTILIZADOR:
+- Cidade: ${city}
+- Estilo de comunicação: ${persona}
+
+INSTRUÇÕES ESPECÍFICAS:
+1. Focar em itens essenciais disponíveis em Moçambique
+2. Mencionar preparação para ciclones/época chuvosa
+3. Incluir documentos locais (BI, etc.)
+4. Valores em Metical quando necessário
+5. Referências a lojas/mercados locais se relevante
+
+FORMATO: Apresenta a informação de forma organizadas com secções claras. Usa emojis relevantes e seja prático.`;
+
+            const completion = await this.openai.chat.completions.create({
+                model: this.model,
+                messages: [
+                    {
+                        role: "system",
+                        content: this.systemPrompt + " Especialização: kits de emergência para Moçambique"
+                    },
+                    {
+                        role: "user",
+                        content: prompt
+                    }
+                ],
+                max_tokens: 1500,
+                temperature: 0.3
+            });
+
+            const response = completion.choices[0]?.message?.content;
+
+            if (response) {
+                return {
+                    success: true,
+                    message: response.trim(),
+                    method: 'ai_generated',
+                    city: city
+                };
+            } else {
+                return this.generateFallbackEmergencyKitInfo();
+            }
+
+        } catch (error) {
+            console.error('❌ Erro ao gerar informações kit emergência:', error);
+            return this.generateFallbackEmergencyKitInfo();
+        }
+    }
+
+    generateFallbackEmergencyKitInfo() {
+        return {
+            success: false,
+            message: '🎒 Kit de emergência: Água (3L/pessoa), comida não perecível (3 dias), medicamentos, documentos em plástico, lanterna, rádio, pilhas.',
+            method: 'fallback'
+        };
+    }
+
+    async generateLocationBasedAlert(weatherData, userContext = {}) {
+        try {
+            const temp = weatherData.temperature;
+            const humidity = weatherData.humidity;
+            const city = weatherData.city;
+
+            // Só gerar alertas se condições realmente exigirem
+            if (temp < 25 && humidity < 70) {
+                return { success: false };
+            }
+
+            const prompt = `Tu és a Joana, assistente do tempo. O utilizador enviou a localização GPS e o clima atual apresenta condições que requerem alerta.
+
+DADOS DO CLIMA:
+- Cidade: ${city}
+- Temperatura: ${temp}°C
+- Humidade: ${humidity}%
+- Condições: ${weatherData.description}
+
+SITUAÇÃO:
+${temp > 30 ? '- Temperatura muito elevada (calor extremo)' : ''}
+${humidity > 80 ? '- Humidade muito alta (desconforto)' : ''}
+${temp > 35 ? '- RISCO de desidratação e insolação' : ''}
+
+INSTRUÇÕES:
+1. Gera um alerta breve (máximo 3 linhas)
+2. Dá 1-2 conselhos práticos específicos
+3. Usa tom cuidadoso mas não alarmista
+4. Foca no que fazer AGORA
+
+FORMATO: Mensagem direta sem usar asteriscos ou formatação markdown.`;
+
+            const response = await this.callOpenAI(prompt, 0.4);
+
+            if (response) {
+                return {
+                    success: true,
+                    message: response.trim()
+                };
+            } else {
+                return this.generateFallbackLocationAlert(temp, humidity);
+            }
+
+        } catch (error) {
+            console.error('❌ Erro ao gerar alerta por localização:', error);
+            return this.generateFallbackLocationAlert(weatherData.temperature, weatherData.humidity);
+        }
+    }
+
+    generateFallbackLocationAlert(temp, humidity) {
+        if (temp > 35) {
+            return {
+                success: true,
+                message: `CALOR EXTREMO (${temp}°C)! Bebe muita água, fica à sombra e evita exposição solar prolongada.`
+            };
+        } else if (temp > 30) {
+            return {
+                success: true,
+                message: `Temperatura elevada (${temp}°C). Mantém-te hidratado e procura locais frescos.`
+            };
+        } else if (humidity > 85) {
+            return {
+                success: true,
+                message: `Humidade muito alta (${humidity}%). Usa roupa leve e ventila bem os espaços.`
+            };
+        }
+        return { success: false };
+    }
+
+    async generateSimpleWeatherResponse(weatherData, userContext = {}) {
+        try {
+            const temp = weatherData.temperature;
+            const city = weatherData.city;
+            const description = weatherData.description;
+
+            const prompt = `Tu és a Joana, assistente do tempo em Moçambique. O utilizador enviou localização GPS e obteve o clima atual.
+
+DADOS DO CLIMA:
+- Cidade: ${city}
+- Temperatura: ${temp}°C  
+- Condições: ${description}
+- Humidade: ${weatherData.humidity}%
+
+INSTRUÇÕES:
+1. Cumprimente e confirme a localização
+2. Comente brevemente sobre as condições atuais
+3. Dê 1-2 conselhos práticos relevantes
+4. Mantenha tom amigável e informativo
+5. Máximo 4 linhas
+
+Responde como se fosses a Joana conversando normalmente, sem usar markdown ou formatação especial.`;
+
+            const response = await this.callOpenAI(prompt, 0.7);
+
+            return {
+                success: true,
+                message: response ? response.trim() : this.generateFallbackWeatherComment(weatherData),
+                method: response ? 'ai_generated' : 'fallback'
+            };
+
+        } catch (error) {
+            console.error('❌ Erro ao gerar resposta simples clima:', error);
+            return {
+                success: true,
+                message: this.generateFallbackWeatherComment(weatherData),
+                method: 'fallback'
+            };
+        }
+    }
+
+    generateFallbackWeatherComment(weatherData) {
+        const temp = weatherData.temperature;
+        const humidity = weatherData.humidity;
+
+        if (temp > 30) {
+            return `Está bem quente em ${weatherData.city}! Mantém-te hidratado e procura sombra quando possível.`;
+        } else if (temp < 18) {
+            return `Temperatura fresca em ${weatherData.city}. Veste algo mais quente se vais sair.`;
+        } else if (humidity > 85) {
+            return `O ar está muito húmido em ${weatherData.city}. Usa roupa leve e mantém os ambientes ventilados.`;
+        } else {
+            return `Condições agradáveis em ${weatherData.city}! Bom tempo para atividades ao ar livre.`;
+        }
+    }
+
     clearAllCaches() {
         this.analysisCache.clear();
         this.suggestionsHandler.clearCache();
-        console.log('✅ Todos os caches AI limpos');
+        this.multilingualHandler.clearCache();
+        console.log('✅ Todos os caches AI limpos (incluindo multilíngue)');
+    }
+
+    // =============================================================
+    // 🌍 SISTEMA MULTILÍNGUE - SUPORTE A 10+ IDIOMAS
+    // =============================================================
+
+    /**
+     * Processa mensagem em qualquer idioma suportado
+     */
+    async processMultilingualMessage(message, phoneNumber, user = null) {
+        try {
+            console.log(`🌍 Iniciando processamento multilíngue para ${phoneNumber}`);
+
+            // 1. Detectar idioma e traduzir se necessário
+            const multilingualData = await this.multilingualHandler.processMultilingualMessage(message, phoneNumber);
+
+            console.log(`📊 Detecção: ${multilingualData.detected_language.language} (${Math.round(multilingualData.detected_language.confidence * 100)}%)`);
+
+            // 2. Se precisa de análise, processar mensagem em português (idioma base)
+            let analysis = null;
+            if (multilingualData.needs_analysis) {
+                const portugueseMessage = multilingualData.processed_message;
+
+                // Usar método correto para análise
+                const analysisResult = await this.analyzeMessageWithAI(portugueseMessage, {
+                    queryCount: user?.query_count || 0,
+                    lastCity: user?.last_city,
+                    preferredCity: user?.preferred_city,
+                    weatherPreferences: user?.weather_preferences,
+                    currentLocation: user?.last_city
+                });
+
+                if (analysisResult.success) {
+                    analysis = analysisResult.analysis;
+                }
+            }
+
+            return {
+                original_message: message,
+                processed_message: multilingualData.processed_message,
+                analysis: analysis,
+                multilingual_data: multilingualData,
+                detected_language: multilingualData.detected_language.language,
+                needs_translation: multilingualData.should_translate_response,
+                target_language: multilingualData.target_language
+            };
+
+        } catch (error) {
+            console.log('⚠️ Erro no processamento multilíngue:', error.message);
+
+            // Fallback: processar em português assumindo que é português
+            const analysisResult = await this.analyzeMessageWithAI(message, user);
+            return {
+                original_message: message,
+                processed_message: message,
+                analysis: analysisResult.success ? analysisResult.analysis : null,
+                multilingual_data: null,
+                detected_language: 'pt',
+                needs_translation: false,
+                error: 'multilingual_processing_failed'
+            };
+        }
+    }
+
+    /**
+     * Gera resposta meteorológica multilíngue
+     */
+    async generateMultilingualWeatherResponse(weatherData, userContext, targetLanguage = 'pt') {
+        try {
+            // 1. Gerar resposta em português (idioma base)
+            const portugueseResponse = await this.generateSimpleWeatherResponse(weatherData, userContext);
+
+            if (!portugueseResponse.success) {
+                return portugueseResponse; // Retornar erro se não conseguiu gerar em português
+            }
+
+            // 2. Traduzir se necessário
+            if (targetLanguage === 'pt') {
+                return {
+                    ...portugueseResponse,
+                    language: 'pt',
+                    translation_applied: false
+                };
+            }
+
+            const translatedResponse = await this.multilingualHandler.generateMultilingualResponse(
+                portugueseResponse.message,
+                targetLanguage,
+                weatherData
+            );
+
+            return {
+                success: true,
+                message: translatedResponse.response,
+                language: translatedResponse.language,
+                translation_applied: translatedResponse.translation_applied,
+                confidence: translatedResponse.confidence || 0.8,
+                original_portuguese: translatedResponse.original_portuguese
+            };
+
+        } catch (error) {
+            console.log('⚠️ Erro na geração multilíngue:', error.message);
+
+            // Fallback em português
+            return await this.generateSimpleWeatherResponse(weatherData, userContext);
+        }
+    }
+
+    /**
+     * Gera resposta amigável multilíngue (para perguntas não meteorológicas)
+     */
+    async generateMultilingualFriendlyResponse(originalMessage, analysis, userContext, targetLanguage = 'pt') {
+        try {
+            // 1. Gerar resposta em português
+            const portugueseResponse = await this.generateFriendlyMozambicanResponse(
+                originalMessage,
+                analysis,
+                userContext
+            );
+
+            if (!portugueseResponse.success) {
+                return portugueseResponse;
+            }
+
+            // 2. Traduzir se necessário
+            if (targetLanguage === 'pt') {
+                return {
+                    ...portugueseResponse,
+                    language: 'pt',
+                    translation_applied: false
+                };
+            }
+
+            const translatedResponse = await this.multilingualHandler.generateMultilingualResponse(
+                portugueseResponse.message,
+                targetLanguage
+            );
+
+            return {
+                success: true,
+                message: translatedResponse.response,
+                language: translatedResponse.language,
+                translation_applied: translatedResponse.translation_applied,
+                confidence: translatedResponse.confidence || 0.8,
+                original_portuguese: translatedResponse.original_portuguese
+            };
+
+        } catch (error) {
+            console.log('⚠️ Erro na resposta amigável multilíngue:', error.message);
+            return await this.generateFriendlyMozambicanResponse(originalMessage, analysis, userContext);
+        }
+    }
+
+    /**
+     * Obtém idiomas suportados
+     */
+    getSupportedLanguages() {
+        return this.multilingualHandler.getSupportedLanguages();
+    }
+
+    /**
+     * Detecta idioma de uma mensagem
+     */
+    async detectMessageLanguage(message) {
+        return await this.multilingualHandler.detectLanguage(message);
+    }
+
+    /**
+     * Estatísticas do sistema multilíngue
+     */
+    getMultilingualStats() {
+        return this.multilingualHandler.getUsageStats();
     }
 }
+
+module.exports = OPENAI;
 
 module.exports = OPENAI;

@@ -146,7 +146,7 @@ Como está o tempo hoje?        15:22 ✓✓
 
 ```
 🤖 Joana Bot
-🌤️ Eh pá, aqui em Maputo está       15:22 ✓✓
+🌤️ aqui em Maputo está       15:22 ✓✓
 bem fixe hoje! 25°C, céu limpo 
 e uma brisa boa. Perfeito para
 sair e aproveitar o dia! 

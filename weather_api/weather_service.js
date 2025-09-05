@@ -1,6 +1,7 @@
 // weather_api/weather_service.js
 require('dotenv').config();
 const axios = require("axios");
+const CityNormalizer = require('./city_normalizer');
 
 
 class WeatherService {
@@ -20,6 +21,9 @@ class WeatherService {
         ];
         this.cache = new Map(); // Cache simples
         this.cacheTimeout = 10 * 60 * 1000; // 10 minutos
+
+        // Inicializar normalizador de cidades
+        this.cityNormalizer = new CityNormalizer();
     }
 
     // Função principal para buscar temperatura
@@ -39,12 +43,15 @@ class WeatherService {
             try {
                 const result = await this.fetchFromAPI(api, city, units);
                 if (result) {
+                    // Normalizar dados da cidade antes de retornar
+                    const normalizedResult = this.cityNormalizer.normalizeWeatherData(result);
+
                     // Salvar no cache
                     this.cache.set(cacheKey, {
-                        data: result,
+                        data: normalizedResult,
                         timestamp: Date.now()
                     });
-                    return result;
+                    return normalizedResult;
                 }
             } catch (error) {
                 console.log(`Erro na API ${api.name}:`, error.message);
@@ -276,6 +283,108 @@ class WeatherService {
         } else {
             return date.toLocaleDateString('pt-BR', { weekday: 'long' });
         }
+    }
+
+    // Buscar clima por coordenadas GPS
+    async getCurrentWeatherByCoordinates(latitude, longitude, units = 'celsius') {
+        const cacheKey = `${latitude}_${longitude}_${units}`;
+
+        // Verificar cache
+        if (this.cache.has(cacheKey)) {
+            const cached = this.cache.get(cacheKey);
+            if (Date.now() - cached.timestamp < this.cacheTimeout) {
+                return cached.data;
+            }
+        }
+
+        // Tentar APIs em ordem
+        for (const api of this.apis) {
+            try {
+                const result = await this.fetchFromAPIByCoordinates(api, latitude, longitude, units);
+                if (result) {
+                    // Normalizar dados da cidade antes de retornar
+                    const normalizedResult = this.cityNormalizer.normalizeWeatherData(result);
+
+                    // Salvar no cache
+                    this.cache.set(cacheKey, {
+                        data: normalizedResult,
+                        timestamp: Date.now()
+                    });
+                    return normalizedResult;
+                }
+            } catch (error) {
+                console.log(`Erro na API ${api.name} para coordenadas:`, error.message);
+                continue; // Tentar próxima API
+            }
+        }
+
+        throw new Error('Todas as APIs falharam para buscar clima por coordenadas');
+    }
+
+    // Implementação para buscar de API específica por coordenadas
+    async fetchFromAPIByCoordinates(api, latitude, longitude, units) {
+        if (api.name === 'OpenWeatherMap') {
+            return await this.fetchFromOpenWeatherByCoordinates(api, latitude, longitude, units);
+        } else if (api.name === 'WeatherAPI') {
+            return await this.fetchFromWeatherAPIByCoordinates(api, latitude, longitude, units);
+        }
+    }
+
+    // OpenWeatherMap com coordenadas
+    async fetchFromOpenWeatherByCoordinates(api, latitude, longitude, units) {
+        const unitsParam = units === 'fahrenheit' ? 'imperial' : 'metric';
+        const url = `${api.baseUrl}/weather?lat=${latitude}&lon=${longitude}&appid=${api.key}&units=${unitsParam}&lang=pt`;
+
+        const response = await axios.get(url);
+
+        return {
+            city: response.data.name,
+            country: response.data.sys.country,
+            temperature: Math.round(response.data.main.temp),
+            description: response.data.weather[0].description,
+            humidity: response.data.main.humidity,
+            windSpeed: Math.round(response.data.wind.speed * 3.6), // m/s para km/h
+            pressure: response.data.main.pressure,
+            feelsLike: Math.round(response.data.main.feels_like),
+            visibility: response.data.visibility ? Math.round(response.data.visibility / 1000) : null,
+            cloudiness: response.data.clouds.all,
+            icon: response.data.weather[0].icon,
+            units: units === 'fahrenheit' ? '°F' : '°C',
+            coordinates: {
+                latitude: response.data.coord.lat,
+                longitude: response.data.coord.lon
+            },
+            source: 'OpenWeatherMap'
+        };
+    }
+
+    // WeatherAPI com coordenadas
+    async fetchFromWeatherAPIByCoordinates(api, latitude, longitude, units) {
+        const url = `${api.baseUrl}/current.json?key=${api.key}&q=${latitude},${longitude}&lang=pt`;
+        const response = await axios.get(url);
+
+        const tempValue = units === 'fahrenheit' ? response.data.current.temp_f : response.data.current.temp_c;
+        const feelsLikeValue = units === 'fahrenheit' ? response.data.current.feelslike_f : response.data.current.feelslike_c;
+
+        return {
+            city: response.data.location.name,
+            country: response.data.location.country,
+            temperature: Math.round(tempValue),
+            description: response.data.current.condition.text,
+            humidity: response.data.current.humidity,
+            windSpeed: Math.round(response.data.current.wind_kph),
+            pressure: response.data.current.pressure_mb,
+            feelsLike: Math.round(feelsLikeValue),
+            visibility: response.data.current.vis_km,
+            cloudiness: response.data.current.cloud,
+            icon: response.data.current.condition.icon,
+            units: units === 'fahrenheit' ? '°F' : '°C',
+            coordinates: {
+                latitude: response.data.location.lat,
+                longitude: response.data.location.lon
+            },
+            source: 'WeatherAPI'
+        };
     }
 
     // Buscar cidades para autocompletar
