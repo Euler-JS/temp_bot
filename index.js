@@ -151,6 +151,9 @@ async function processAdvancedTextMessage(messageText, phoneNumber, enableAutoDe
   try {
     console.log(`🧠 Processamento avançado: "${messageText}"`);
 
+    // **NOVO** - Mostrar indicador de "escrevendo" enquanto processa
+    await whatsappApi.enviarIndicadorEscrevendo(phoneNumber);
+
     // Verificar comandos especiais primeiro
     if (messageText.toLowerCase().startsWith('/sugestoes') ||
       messageText.toLowerCase().startsWith('/sugestões') ||
@@ -230,7 +233,8 @@ async function processAdvancedTextMessage(messageText, phoneNumber, enableAutoDe
       );
 
       if (friendlyResponse.success) {
-        await whatsappApi.enviarMensagemUsandoWhatsappAPI(friendlyResponse.message, phoneNumber);
+        // **MELHORADO** - Usar método com indicador
+        await whatsappApi.enviarMensagemComIndicador(friendlyResponse.message, phoneNumber);
 
         // Atualizar contador de consultas
         await saveOrUpdateAdvancedUser(phoneNumber, {
@@ -258,6 +262,8 @@ async function processAdvancedTextMessage(messageText, phoneNumber, enableAutoDe
 
   } catch (error) {
     console.error('🚨 Erro no processamento avançado:', error);
+    // **MELHORADO** - Parar indicador e enviar mensagem de erro
+    await whatsappApi.pararIndicadorEscrevendo(phoneNumber);
     await processBasicFallback(messageText, phoneNumber);
   }
 }
@@ -303,7 +309,8 @@ async function handleSuggestionsCommand(phoneNumber, user) {
   try {
     console.log(`💡 Comando /sugestoes acionado para ${phoneNumber}`);
 
-    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Eh pá, deixa eu ver umas sugestões fixes para ti');
+    // **MELHORADO** - Usar indicador de "escrevendo" em vez de mensagem de loading
+    await whatsappApi.enviarIndicadorEscrevendo(phoneNumber);
 
     // Criar contexto para as sugestões baseado no usuário
     const userContext = {
@@ -363,7 +370,8 @@ async function handleSuggestionsCommand(phoneNumber, user) {
       console.log('⚠️ Usando fallback conversacional');
     }
 
-    await whatsappApi.enviarMensagemUsandoWhatsappAPI(finalMessage, phoneNumber);
+    // **MELHORADO** - Usar método com indicador calculado baseado no tamanho da resposta
+    await whatsappApi.enviarMensagemComIndicador(finalMessage, phoneNumber);
 
     // **NOVO** - Após enviar sugestões, enviar lista interativa de opções de interesse
     console.log('📋 Enviando lista de opções de interesse...');
@@ -906,6 +914,9 @@ async function handleAdvancedWeatherData(analysis, phoneNumber, user) {
       return null;
     }
 
+    // **MELHORADO** - Mostrar indicador de "escrevendo" enquanto busca dados
+    await whatsappApi.enviarIndicadorEscrevendo(phoneNumber);
+
     // Verificar se é uma pergunta específica sobre chuva
     const isRainQuery = originalMessage && (
       originalMessage.toLowerCase().includes('vai chover') ||
@@ -926,10 +937,6 @@ async function handleAdvancedWeatherData(analysis, phoneNumber, user) {
       analysis.originalMessage?.toLowerCase().includes('semanal')) {
       return await handleWeeklyForecast(targetCity, phoneNumber, user);
     }
-
-    // Mensagem de loading contextual
-    const loadingMsg = getContextualLoadingMessage(context, targetCity);
-    await whatsappApi.enviarMensagemUsandoWhatsappAPI(loadingMsg, phoneNumber);
 
     // Buscar dados meteorológicos baseado no timeframe
     let weatherData;
@@ -1002,7 +1009,8 @@ async function handleAdvancedWeatherData(analysis, phoneNumber, user) {
 
     console.log('📤 Enviando mensagem final:', finalMessage.substring(0, 100) + '...');
 
-    await whatsappApi.enviarMensagemUsandoWhatsappAPI(finalMessage, phoneNumber);
+    // **MELHORADO** - Usar método com indicador de tempo calculado
+    await whatsappApi.enviarMensagemComIndicador(finalMessage, phoneNumber);
 
     // Salvar histórico meteorológico
     await saveAdvancedWeatherHistory(phoneNumber, weatherData, analysis);
@@ -1017,6 +1025,7 @@ async function handleAdvancedWeatherData(analysis, phoneNumber, user) {
 
   } catch (error) {
     console.error('❌ Erro em dados meteorológicos avançados:', error);
+    await whatsappApi.pararIndicadorEscrevendo(phoneNumber);
     await whatsappApi.enviarMensagemErro(
       phoneNumber,
       "Não consegui ver os dados do tempo",

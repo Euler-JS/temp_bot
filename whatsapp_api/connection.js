@@ -446,10 +446,149 @@ class WhatsAppApi {
         }
     }
 
-    // **NOVO** - Enviar mensagem com emoji animado (loading)
+    // **ALTERNATIVA** - Reação rápida para mostrar que recebeu a mensagem
+    async enviarReacaoRecebido(numeroCelular, messageId = null) {
+        try {
+            console.log('👀 Enviando reação de "recebido" para:', numeroCelular);
+
+            // Se não temos o messageId, só enviamos uma mensagem rápida
+            if (!messageId) {
+                const quickResponse = {
+                    messaging_product: "whatsapp",
+                    to: numeroCelular,
+                    text: {
+                        body: "👀 Recebido! Deixa eu ver isso..."
+                    }
+                };
+                return await this.enviarMensagemUsandoWhatsappAPI(quickResponse, numeroCelular);
+            }
+
+            // Tentar enviar reação (se disponível)
+            const reactionData = {
+                messaging_product: "whatsapp",
+                recipient_type: "individual",
+                to: numeroCelular,
+                type: "reaction",
+                reaction: {
+                    message_id: messageId,
+                    emoji: "👀"
+                }
+            };
+
+            const headers = {
+                'Authorization': `Bearer ${this.token}`,
+                'Content-Type': 'application/json'
+            };
+
+            let url = `https://graph.facebook.com/v19.0/${this.phoneNumberID}/messages`;
+            const appSecretProof = this.generateAppSecretProof();
+            if (appSecretProof) {
+                url += `?appsecret_proof=${appSecretProof}`;
+            }
+
+            const response = await axios.post(url, reactionData, { headers });
+            console.log('✅ Reação "recebido" enviada com sucesso');
+            return response.data;
+
+        } catch (error) {
+            console.log('⚠️ Reação não funcionou, usando mensagem rápida...');
+            // Fallback: mensagem rápida
+            return await this.enviarMensagemRapidaProcessando(numeroCelular);
+        }
+    }
+
+    // **NOVA ABORDAGEM** - Mensagem rápida para mostrar que está processando
+    async enviarMensagemRapidaProcessando(numeroCelular, acao = 'Analisando') {
+        try {
+            console.log('⚡ Enviando confirmação rápida para:', numeroCelular);
+
+            const emojis = ['🔍', '🧠', '⚡', '👀', '🤖', '💭'];
+            const emoji = emojis[Math.floor(Math.random() * emojis.length)];
+
+            const quickMessage = `${emoji} ${acao}... um momento!`;
+
+            const messageData = {
+                messaging_product: 'whatsapp',
+                to: numeroCelular,
+                text: {
+                    body: quickMessage
+                }
+            };
+
+            const headers = {
+                'Authorization': `Bearer ${this.token}`,
+                'Content-Type': 'application/json'
+            };
+
+            let url = `https://graph.facebook.com/v19.0/${this.phoneNumberID}/messages`;
+            const appSecretProof = this.generateAppSecretProof();
+            if (appSecretProof) {
+                url += `?appsecret_proof=${appSecretProof}`;
+            }
+
+            const response = await axios.post(url, messageData, { headers });
+            console.log('✅ Mensagem rápida de processamento enviada');
+            return response.data;
+
+        } catch (error) {
+            console.error('❌ Erro ao enviar mensagem rápida:', error.response ? error.response.data : error.message);
+            return null;
+        }
+    }
+
+    // **MELHORADA** - Mensagem de carregamento mais natural
     async enviarMensagemCarregamento(numeroCelular, acao = 'Processando') {
-        const loadingMessage = `⏳ ${acao}...\n\n_Aguarde um momento_`;
-        return await this.enviarMensagemUsandoWhatsappAPI(loadingMessage, numeroCelular);
+        const loadingMessages = [
+            `🔍 ${acao}... só um segundo!`,
+            `⚡ ${acao}... quase pronto!`,
+            `🧠 ${acao}... deixa eu ver isso!`,
+            `👀 ${acao}... analisando!`,
+            `🤖 ${acao}... calculando!`
+        ];
+
+        const randomMessage = loadingMessages[Math.floor(Math.random() * loadingMessages.length)];
+        return await this.enviarMensagemUsandoWhatsappAPI(randomMessage, numeroCelular);
+    }
+
+    // **NOVA** - Confirmação + Resposta em sequência
+    async enviarConfirmacaoEResposta(numeroCelular, resposta, messageId = null, tempoEspera = 2000) {
+        try {
+            console.log('🎯 Enviando confirmação + resposta em sequência');
+
+            // 1. Confirmação rápida que recebeu
+            if (messageId) {
+                await this.enviarReacaoRecebido(numeroCelular, messageId);
+            } else {
+                await this.enviarMensagemRapidaProcessando(numeroCelular, 'Recebido');
+            }
+
+            // 2. Aguardar um pouco (simular processamento)
+            await new Promise(resolve => setTimeout(resolve, tempoEspera));
+
+            // 3. Enviar resposta completa
+            return await this.enviarMensagemUsandoWhatsappAPI(resposta, numeroCelular);
+
+        } catch (error) {
+            console.error('❌ Erro na sequência confirmação + resposta:', error);
+            // Fallback: apenas enviar a resposta
+            return await this.enviarMensagemUsandoWhatsappAPI(resposta, numeroCelular);
+        }
+    }
+
+    // **SUBSTITUIR OS MÉTODOS ANTIGOS** - Para compatibilidade
+    async enviarIndicadorEscrevendo(numeroCelular) {
+        console.log('ℹ️ Indicador typing não disponível, usando confirmação rápida');
+        return await this.enviarMensagemRapidaProcessando(numeroCelular, 'Analisando');
+    }
+
+    async pararIndicadorEscrevendo(numeroCelular) {
+        console.log('ℹ️ Não há indicador para parar');
+        return null;
+    }
+
+    async enviarMensagemComIndicador(mensagem, numeroCelular, tempoEspera = 1500) {
+        console.log('🔄 Usando alternativa ao indicador typing');
+        return await this.enviarConfirmacaoEResposta(numeroCelular, mensagem, null, tempoEspera);
     }
 
     // **NOVO** - Enviar erro formatado
