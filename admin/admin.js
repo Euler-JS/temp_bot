@@ -4,16 +4,130 @@ class AdminDashboard {
         this.baseUrl = window.location.origin;
         this.charts = {};
         this.data = {};
+        this.token = this.getToken();
         this.init();
     }
 
+    getToken() {
+        return localStorage.getItem('adminToken') || sessionStorage.getItem('adminToken');
+    }
+
+    getHeaders() {
+        const headers = {
+            'Content-Type': 'application/json'
+        };
+
+        if (this.token) {
+            headers['Authorization'] = `Bearer ${this.token}`;
+        }
+
+        return headers;
+    }
+
+    async checkAuth() {
+        if (!this.token) {
+            this.redirectToLogin();
+            return false;
+        }
+
+        try {
+            const response = await fetch(`${this.baseUrl}/admin/auth/verify`, {
+                headers: this.getHeaders()
+            });
+
+            if (!response.ok) {
+                this.redirectToLogin();
+                return false;
+            }
+
+            const result = await response.json();
+            if (!result.success) {
+                this.redirectToLogin();
+                return false;
+            }
+
+            // Armazenar dados do usuário
+            this.currentUser = result.data;
+            return true;
+
+        } catch (error) {
+            console.error('❌ Erro na verificação de autenticação:', error);
+            this.redirectToLogin();
+            return false;
+        }
+    }
+
+    redirectToLogin() {
+        // Limpar tokens
+        localStorage.removeItem('adminToken');
+        sessionStorage.removeItem('adminToken');
+
+        // Redirecionar para login
+        window.location.href = '/admin/login';
+    }
+
     async init() {
+        // Verificar autenticação primeiro
+        const isAuthenticated = await this.checkAuth();
+        if (!isAuthenticated) {
+            return;
+        }
+
         await this.loadInitialData();
         this.setupEventListeners();
         this.updateLastRefresh();
+        this.displayUserInfo();
 
         // Atualizar automaticamente a cada 5 minutos
         setInterval(() => this.refreshData(), 5 * 60 * 1000);
+    }
+
+    displayUserInfo() {
+        if (this.currentUser) {
+            // Atualizar navbar com informações do usuário
+            const userInfo = document.querySelector('.navbar-text');
+            if (userInfo) {
+                userInfo.innerHTML = `
+                    <i class="bi bi-person-circle me-1"></i>
+                    ${this.currentUser.full_name || this.currentUser.username}
+                    <small class="text-muted ms-2">(${this.translateRole(this.currentUser.role)})</small>
+                `;
+            }
+
+            // Adicionar botão de logout
+            const logoutBtn = document.createElement('button');
+            logoutBtn.className = 'btn btn-outline-light btn-sm ms-2';
+            logoutBtn.innerHTML = '<i class="bi bi-box-arrow-right"></i>';
+            logoutBtn.title = 'Logout';
+            logoutBtn.onclick = () => this.logout();
+
+            const navActions = document.querySelector('.navbar-nav.ms-auto');
+            if (navActions) {
+                navActions.appendChild(logoutBtn);
+            }
+        }
+    }
+
+    translateRole(role) {
+        const translations = {
+            'super_admin': 'Super Admin',
+            'admin': 'Administrador',
+            'moderator': 'Moderador'
+        };
+        return translations[role] || role;
+    }
+
+    async logout() {
+        try {
+            await fetch(`${this.baseUrl}/admin/auth/logout`, {
+                method: 'POST',
+                headers: this.getHeaders()
+            });
+        } catch (error) {
+            console.error('❌ Erro no logout:', error);
+        } finally {
+            this.redirectToLogin();
+        }
     }
 
     setupEventListeners() {
@@ -63,7 +177,18 @@ class AdminDashboard {
 
     async loadStats() {
         try {
-            const response = await fetch(`${this.baseUrl}/admin/stats`);
+            const response = await fetch(`${this.baseUrl}/admin/stats`, {
+                headers: this.getHeaders()
+            });
+
+            if (!response.ok) {
+                if (response.status === 401) {
+                    this.redirectToLogin();
+                    return;
+                }
+                throw new Error('Erro ao carregar estatísticas');
+            }
+
             const stats = await response.json();
 
             if (stats.success) {
@@ -73,13 +198,25 @@ class AdminDashboard {
                 this.createCitiesChart(stats.data.topCities || []);
             }
         } catch (error) {
-            console.error('Erro ao carregar estatísticas:', error);
+            console.error('❌ Erro ao carregar estatísticas:', error);
+            this.showError('Erro ao carregar estatísticas');
         }
     }
 
     async loadUsers() {
         try {
-            const response = await fetch(`${this.baseUrl}/admin/users`);
+            const response = await fetch(`${this.baseUrl}/admin/users`, {
+                headers: this.getHeaders()
+            });
+
+            if (!response.ok) {
+                if (response.status === 401) {
+                    this.redirectToLogin();
+                    return;
+                }
+                throw new Error('Erro ao carregar usuários');
+            }
+
             const users = await response.json();
 
             if (users.success) {
@@ -88,13 +225,25 @@ class AdminDashboard {
                 this.updateRecentActivity(users.data);
             }
         } catch (error) {
-            console.error('Erro ao carregar usuários:', error);
+            console.error('❌ Erro ao carregar usuários:', error);
+            this.showError('Erro ao carregar usuários');
         }
     }
 
     async loadAnalytics() {
         try {
-            const response = await fetch(`${this.baseUrl}/admin/analytics`);
+            const response = await fetch(`${this.baseUrl}/admin/analytics`, {
+                headers: this.getHeaders()
+            });
+
+            if (!response.ok) {
+                if (response.status === 401) {
+                    this.redirectToLogin();
+                    return;
+                }
+                throw new Error('Erro ao carregar analytics');
+            }
+
             const analytics = await response.json();
 
             if (analytics.success) {
@@ -105,14 +254,17 @@ class AdminDashboard {
                 this.createCityQueriesChart(analytics.data.cityQueries || {});
             }
         } catch (error) {
-            console.error('Erro ao carregar analytics:', error);
+            console.error('❌ Erro ao carregar analytics:', error);
+            this.showError('Erro ao carregar analytics');
         }
     }
 
     async loadSystemStatus() {
         console.log('🔧 Carregando status do sistema...');
         try {
-            const response = await fetch(`${this.baseUrl}/health`);
+            const response = await fetch(`${this.baseUrl}/health`, {
+                headers: this.getHeaders()
+            });
             console.log('🔧 Resposta do health check:', response.status);
 
             if (!response.ok) {
@@ -145,9 +297,15 @@ class AdminDashboard {
         try {
             // Carregar usuários por região
             console.log('👥 Buscando usuários por região...');
-            const usersResponse = await fetch(`${this.baseUrl}/admin/users-by-region`);
+            const usersResponse = await fetch(`${this.baseUrl}/admin/users-by-region`, {
+                headers: this.getHeaders()
+            });
 
             if (!usersResponse.ok) {
+                if (usersResponse.status === 401) {
+                    this.redirectToLogin();
+                    return;
+                }
                 console.error('❌ Erro na resposta de usuários:', usersResponse.status);
                 return;
             }
@@ -164,9 +322,15 @@ class AdminDashboard {
 
             // Carregar alertas recentes
             console.log('📢 Buscando alertas recentes...');
-            const alertsResponse = await fetch(`${this.baseUrl}/admin/recent-alerts`);
+            const alertsResponse = await fetch(`${this.baseUrl}/admin/recent-alerts`, {
+                headers: this.getHeaders()
+            });
 
             if (!alertsResponse.ok) {
+                if (alertsResponse.status === 401) {
+                    this.redirectToLogin();
+                    return;
+                }
                 console.error('❌ Erro na resposta de alertas:', alertsResponse.status);
                 return;
             }
@@ -717,13 +881,24 @@ class AdminDashboard {
 
     async refreshLogs() {
         try {
+            console.log('📋 Carregando logs...');
+
             const container = document.getElementById('logsContainer');
-            if (!container) return;
+            if (!container) {
+                console.error('❌ Container logsContainer não encontrado');
+                return;
+            }
 
             container.innerHTML = '<div class="text-center"><div class="spinner-border" role="status"></div></div>';
 
-            const response = await fetch(`${this.baseUrl}/admin/logs`);
+            console.log('📡 Fazendo requisição para logs...');
+            const response = await fetch(`${this.baseUrl}/admin/logs`, {
+                headers: this.getHeaders()
+            });
+
+            console.log('📥 Resposta logs:', response.status);
             const logs = await response.json();
+            console.log('📦 Dados logs:', logs);
 
             if (logs.success) {
                 container.innerHTML = logs.data.map(log =>

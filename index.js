@@ -2,17 +2,20 @@
 require('dotenv').config();
 const express = require("express");
 const bodyParser = require("body-parser");
+const cookieParser = require("cookie-parser");
 const path = require("path");
 const WhatsAppApi = require("./whatsapp_api/connection");
 const WeatherService = require("./weather_api/weather_service");
 const OPENAI = require("./open_ai/open_ai");
 const SupabaseService = require("./database/supabase");
+const AdminAuthService = require("./admin/admin_auth");
 
 const app = express();
 const port = process.env.PORT || 3000;
 
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.json());
+app.use(cookieParser());
 
 // WHATSAPP API Configuration
 const token = process.env.WHATSAPP_TOKEN || "";
@@ -23,6 +26,42 @@ const whatsappApi = new WhatsAppApi(token, phoneNumberID);
 const weatherService = new WeatherService();
 const openaiService = new OPENAI(process.env.OPEN_AI || "");
 const dbService = new SupabaseService();
+const adminAuthService = new AdminAuthService(dbService.supabase);
+
+// Middleware para proteção de rotas admin
+const requireAdminAuth = async (req, res, next) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1] ||
+      req.cookies?.adminToken ||
+      req.query.token;
+
+    if (!token) {
+      if (req.path.startsWith('/admin/') && req.accepts('html')) {
+        return res.redirect('/admin/login');
+      }
+      return res.status(401).json({ success: false, error: 'Token de acesso requerido' });
+    }
+
+    const verification = await adminAuthService.verifyToken(token);
+
+    if (!verification.valid) {
+      if (req.path.startsWith('/admin/') && req.accepts('html')) {
+        return res.redirect('/admin/login?error=session_expired');
+      }
+      return res.status(401).json({ success: false, error: verification.error });
+    }
+
+    req.adminUser = verification.user;
+    next();
+
+  } catch (error) {
+    console.error('❌ Erro na verificação de autenticação:', error);
+    if (req.path.startsWith('/admin/') && req.accepts('html')) {
+      return res.redirect('/admin/login?error=auth_error');
+    }
+    return res.status(401).json({ success: false, error: 'Token inválido' });
+  }
+};
 
 // ===============================================
 // ADAPTADOR PARA NOVA ESTRUTURA AI
@@ -3305,23 +3344,234 @@ app.get("/health", async (req, res) => {
 // ROTAS DO PAINEL ADMINISTRATIVO
 // ===============================================
 
-// Rota principal do painel admin - serve o HTML
-app.get('/admin', (req, res) => {
-  res.sendFile(path.join(__dirname, 'admin', 'index.html'));
+// ===============================================
+// ROTAS DE AUTENTICAÇÃO ADMINISTRATIVA
+// ===============================================
+
+// Rota de login
+app.get('/admin/login', (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin', 'login.html'));
 });
 
-// Servir arquivo JS do admin (duas rotas para compatibilidade)
+// API de login
+app.post('/admin/auth/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    const ipAddress = req.ip || req.connection.remoteAddress;
+    const userAgent = req.get('User-Agent');
+
+    const result = await adminAuthService.login(username, password, ipAddress, userAgent);
+
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(401).json(result);
+    }
+  } catch (error) {
+    console.error('❌ Erro no login:', error);
+    res.status(500).json({ success: false, error: 'Erro interno do servidor' });
+  }
+});
+
+// API de logout
+app.post('/admin/auth/logout', adminAuthService.middlewareAuth(), async (req, res) => {
+  try {
+    const result = await adminAuthService.logout(req.adminUser.id);
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Erro no logout:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Verificar token
+app.get('/admin/auth/verify', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+
+    if (!token) {
+      return res.status(401).json({ success: false, error: 'Token requerido' });
+    }
+
+    const verification = await adminAuthService.verifyToken(token);
+
+    if (verification.valid) {
+      res.json({ success: true, data: verification.user });
+    } else {
+      res.status(401).json({ success: false, error: verification.error });
+    }
+  } catch (error) {
+    res.status(401).json({ success: false, error: 'Token inválido' });
+  }
+});
+
+// Obter dados do usuário atual
+app.get('/admin/auth/me', adminAuthService.middlewareAuth(), async (req, res) => {
+  try {
+    res.json({ success: true, data: req.adminUser });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ===============================================
+// ROTAS DE GESTÃO DE USUÁRIOS ADMINISTRATIVOS
+// ===============================================
+
+// Listar usuários administrativos
+app.get('/admin/auth/users',
+  adminAuthService.middlewareAuth(),
+  adminAuthService.middlewarePermission('manage_admins'),
+  async (req, res) => {
+    try {
+      const result = await adminAuthService.getAllAdminUsers();
+      res.json(result);
+    } catch (error) {
+      console.error('❌ Erro ao listar usuários admin:', error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+);
+
+// Criar usuário administrativo
+app.post('/admin/auth/users',
+  adminAuthService.middlewareAuth(),
+  adminAuthService.middlewarePermission('manage_admins'),
+  async (req, res) => {
+    try {
+      const result = await adminAuthService.createAdminUser(req.body, req.adminUser.id);
+      res.json(result);
+    } catch (error) {
+      console.error('❌ Erro ao criar usuário admin:', error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+);
+
+// Obter usuário administrativo específico
+app.get('/admin/auth/users/:id',
+  adminAuthService.middlewareAuth(),
+  adminAuthService.middlewarePermission('manage_admins'),
+  async (req, res) => {
+    try {
+      const { data, error } = await adminAuthService.supabase
+        .from('admin_users')
+        .select(`
+          id, username, email, full_name, role, status,
+          permissions, last_login, created_at, updated_at, profile_data
+        `)
+        .eq('id', req.params.id)
+        .single();
+
+      if (error) throw error;
+
+      if (!data) {
+        return res.status(404).json({ success: false, error: 'Usuário não encontrado' });
+      }
+
+      res.json({ success: true, data });
+    } catch (error) {
+      console.error('❌ Erro ao obter usuário admin:', error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+);
+
+// Atualizar usuário administrativo
+app.put('/admin/auth/users/:id',
+  adminAuthService.middlewareAuth(),
+  adminAuthService.middlewarePermission('manage_admins'),
+  async (req, res) => {
+    try {
+      const result = await adminAuthService.updateAdminUser(
+        req.params.id,
+        req.body,
+        req.adminUser.id
+      );
+      res.json(result);
+    } catch (error) {
+      console.error('❌ Erro ao atualizar usuário admin:', error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+);
+
+// Deletar usuário administrativo
+app.delete('/admin/auth/users/:id',
+  adminAuthService.middlewareAuth(),
+  adminAuthService.middlewarePermission('manage_admins'),
+  async (req, res) => {
+    try {
+      const result = await adminAuthService.deleteAdminUser(req.params.id, req.adminUser.id);
+      res.json(result);
+    } catch (error) {
+      console.error('❌ Erro ao deletar usuário admin:', error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+);
+
+// Histórico de login
+app.get('/admin/auth/login-history',
+  adminAuthService.middlewareAuth(),
+  adminAuthService.middlewarePermission('view_logs'),
+  async (req, res) => {
+    try {
+      const userId = req.query.user_id;
+      const result = await adminAuthService.getLoginHistory(userId);
+      res.json(result);
+    } catch (error) {
+      console.error('❌ Erro ao obter histórico de login:', error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+);
+
+// Log de auditoria
+app.get('/admin/auth/audit-log',
+  adminAuthService.middlewareAuth(),
+  adminAuthService.middlewarePermission('view_logs'),
+  async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit) || 100;
+      const offset = parseInt(req.query.offset) || 0;
+      const result = await adminAuthService.getAuditLog(limit, offset);
+      res.json(result);
+    } catch (error) {
+      console.error('❌ Erro ao obter log de auditoria:', error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+);
+
+// Servir arquivos estáticos do admin
+app.get('/admin/admin_users_manager.js', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript');
+  res.sendFile(path.join(__dirname, 'admin', 'admin_users_manager.js'));
+});
+
+app.get('/admin/test_admin_routes.js', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript');
+  res.sendFile(path.join(__dirname, 'admin', 'test_admin_routes.js'));
+});
+
+// Rota principal do painel admin - serve o HTML (com verificação de autenticação)
+app.get('/admin', requireAdminAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin', 'index.html'));
+});// Servir arquivo JS do admin (duas rotas para compatibilidade)
 app.get('/admin/admin.js', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript');
   res.sendFile(path.join(__dirname, 'admin', 'admin.js'));
 });
 
 // Rota adicional para compatibilidade com caminho relativo
 app.get('/admin.js', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript');
   res.sendFile(path.join(__dirname, 'admin', 'admin.js'));
 });
 
 // API endpoints para o painel administrativo
-app.get("/admin/stats", async (req, res) => {
+app.get("/admin/stats", requireAdminAuth, async (req, res) => {
   try {
     const stats = await dbService.getStats();
     const activeUsers = await dbService.getActiveUsers(7);
@@ -3345,7 +3595,7 @@ app.get("/admin/stats", async (req, res) => {
   }
 });
 
-app.get("/admin/users", async (req, res) => {
+app.get("/admin/users", requireAdminAuth, async (req, res) => {
   try {
     const users = await dbService.getAllUsers();
 
@@ -3365,7 +3615,7 @@ app.get("/admin/users", async (req, res) => {
   }
 });
 
-app.get("/admin/analytics", async (req, res) => {
+app.get("/admin/analytics", requireAdminAuth, async (req, res) => {
   try {
     const users = await dbService.getAllUsers();
 
@@ -3389,7 +3639,7 @@ app.get("/admin/analytics", async (req, res) => {
   }
 });
 
-app.get("/admin/users/:contact", async (req, res) => {
+app.get("/admin/users/:contact", requireAdminAuth, async (req, res) => {
   try {
     const { contact } = req.params;
     const user = await dbService.getUserByContact(contact);
@@ -3411,7 +3661,7 @@ app.get("/admin/users/:contact", async (req, res) => {
   }
 });
 
-app.get("/admin/users/export", async (req, res) => {
+app.get("/admin/users/export", requireAdminAuth, async (req, res) => {
   try {
     const users = await dbService.getAllUsers();
 
@@ -3430,7 +3680,7 @@ app.get("/admin/users/export", async (req, res) => {
   }
 });
 
-app.get("/admin/logs", async (req, res) => {
+app.get("/admin/logs", requireAdminAuth, async (req, res) => {
   try {
     const logs = await dbService.getAdminLogs(100);
 
@@ -3467,7 +3717,7 @@ app.get("/admin/logs", async (req, res) => {
       data: fallbackLogs
     });
   }
-}); app.post("/admin/settings", async (req, res) => {
+}); app.post("/admin/settings", requireAdminAuth, async (req, res) => {
   try {
     const { defaultExpertise, enableProgression } = req.body;
 
@@ -3488,7 +3738,7 @@ app.get("/admin/logs", async (req, res) => {
 // ROTAS DO SISTEMA DE ALERTAS
 // ===============================================
 
-app.get("/admin/region-stats", async (req, res) => {
+app.get("/admin/region-stats", requireAdminAuth, async (req, res) => {
   try {
     const users = await dbService.getAllUsers();
     const regionStats = {};
@@ -3508,7 +3758,7 @@ app.get("/admin/region-stats", async (req, res) => {
   }
 });
 
-app.get("/admin/region-users/:region", async (req, res) => {
+app.get("/admin/region-users/:region", requireAdminAuth, async (req, res) => {
   try {
     const { region } = req.params;
     let users;
@@ -3535,7 +3785,7 @@ app.get("/admin/region-users/:region", async (req, res) => {
   }
 });
 
-app.get("/admin/weather/:region", async (req, res) => {
+app.get("/admin/weather/:region", requireAdminAuth, async (req, res) => {
   try {
     const { region } = req.params;
     const weatherData = await weatherService.getCurrentWeather(region);
@@ -3550,7 +3800,7 @@ app.get("/admin/weather/:region", async (req, res) => {
   }
 });
 
-app.get("/admin/users-by-region", async (req, res) => {
+app.get("/admin/users-by-region", requireAdminAuth, async (req, res) => {
   try {
     const usersByRegion = await dbService.getUsersCountByRegion();
 
@@ -3564,7 +3814,7 @@ app.get("/admin/users-by-region", async (req, res) => {
   }
 });
 
-app.post("/admin/send-alert", async (req, res) => {
+app.post("/admin/send-alert", requireAdminAuth, async (req, res) => {
   try {
     const { region, type, title, message, includeWeather, password } = req.body;
 
@@ -3706,7 +3956,7 @@ app.post("/admin/send-alert", async (req, res) => {
   }
 });
 
-app.get("/admin/recent-alerts", async (req, res) => {
+app.get("/admin/recent-alerts", requireAdminAuth, async (req, res) => {
   try {
     // Buscar alertas recentes do banco de dados
     const recentAlerts = await dbService.getRecentAlerts();
@@ -3722,7 +3972,7 @@ app.get("/admin/recent-alerts", async (req, res) => {
 });
 
 // Rota para estatísticas específicas do clima
-app.get("/admin/weather-stats", async (req, res) => {
+app.get("/admin/weather-stats", requireAdminAuth, async (req, res) => {
   try {
     // Buscar estatísticas de clima específicas
     const users = await dbService.getAllUsers();

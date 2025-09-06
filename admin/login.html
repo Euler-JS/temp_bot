@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="pt">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - JoanaBot Admin</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .login-container {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .login-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .login-header h1 {
+            color: #2563eb;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+
+        .login-header p {
+            color: #6b7280;
+            margin: 0;
+        }
+
+        .form-control {
+            border-radius: 10px;
+            border: 2px solid #e5e7eb;
+            padding: 12px 15px;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-control:focus {
+            border-color: #2563eb;
+            box-shadow: 0 0 0 0.2rem rgba(37, 99, 235, 0.1);
+        }
+
+        .btn-login {
+            background: linear-gradient(135deg, #2563eb, #3b82f6);
+            border: none;
+            border-radius: 10px;
+            padding: 12px;
+            font-weight: 600;
+            transition: transform 0.2s ease;
+            width: 100%;
+        }
+
+        .btn-login:hover {
+            transform: translateY(-2px);
+            background: linear-gradient(135deg, #1d4ed8, #2563eb);
+        }
+
+        .login-footer {
+            text-align: center;
+            margin-top: 2rem;
+            padding-top: 2rem;
+            border-top: 1px solid #e5e7eb;
+        }
+
+        .alert {
+            border-radius: 10px;
+        }
+
+        .loading-spinner {
+            display: none;
+        }
+
+        .input-group-text {
+            background: transparent;
+            border: 2px solid #e5e7eb;
+            border-right: none;
+            border-radius: 10px 0 0 10px;
+        }
+
+        .form-control.with-icon {
+            border-left: none;
+            border-radius: 0 10px 10px 0;
+        }
+
+        .password-toggle {
+            cursor: pointer;
+            background: transparent;
+            border: 2px solid #e5e7eb;
+            border-left: none;
+            border-radius: 0 10px 10px 0;
+        }
+
+        .forgot-password {
+            color: #6b7280;
+            text-decoration: none;
+            font-size: 0.875rem;
+        }
+
+        .forgot-password:hover {
+            color: #2563eb;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="login-container">
+        <div class="login-header">
+            <div class="mb-3">
+                <i class="bi bi-thermometer-half" style="font-size: 3rem; color: #2563eb;"></i>
+            </div>
+            <h1>JoanaBot Admin</h1>
+            <p>Acesso ao Painel Administrativo</p>
+        </div>
+
+        <div id="alertContainer"></div>
+
+        <form id="loginForm">
+            <div class="mb-3">
+                <label for="username" class="form-label">Usuário</label>
+                <div class="input-group">
+                    <span class="input-group-text">
+                        <i class="bi bi-person"></i>
+                    </span>
+                    <input type="text" class="form-control with-icon" id="username" name="username"
+                        placeholder="Digite seu usuário" required autocomplete="username">
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label for="password" class="form-label">Senha</label>
+                <div class="input-group">
+                    <span class="input-group-text">
+                        <i class="bi bi-lock"></i>
+                    </span>
+                    <input type="password" class="form-control" id="password" name="password"
+                        placeholder="Digite sua senha" required autocomplete="current-password"
+                        style="border-radius: 0; border-left: none; border-right: none;">
+                    <button type="button" class="btn password-toggle" onclick="togglePassword()">
+                        <i class="bi bi-eye" id="passwordIcon"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="mb-3 form-check">
+                <input type="checkbox" class="form-check-input" id="rememberMe" name="rememberMe">
+                <label class="form-check-label" for="rememberMe">
+                    Lembrar de mim
+                </label>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-login">
+                <span class="login-text">
+                    <i class="bi bi-box-arrow-in-right me-2"></i>
+                    Entrar
+                </span>
+                <span class="loading-spinner">
+                    <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                    Entrando...
+                </span>
+            </button>
+        </form>
+
+        <div class="login-footer">
+            <div class="row">
+                <div class="col-6">
+                    <a href="#" class="forgot-password" onclick="showForgotPassword()">
+                        Esqueceu a senha?
+                    </a>
+                </div>
+                <div class="col-6 text-end">
+                    <small class="text-muted">
+                        <i class="bi bi-shield-check me-1"></i>
+                        Seguro
+                    </small>
+                </div>
+            </div>
+            <div class="mt-3">
+                <small class="text-muted">
+                    JoanaBot Admin Panel &copy; 2025
+                </small>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Esqueci Senha -->
+    <div class="modal fade" id="forgotPasswordModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Recuperar Senha</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Para recuperar sua senha, entre em contato com o administrador do sistema ou com o suporte
+                        técnico.</p>
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle me-2"></i>
+                        <strong>Contatos de Suporte:</strong><br>
+                        Email: admin@JoanaBot.mz<br>
+                        WhatsApp: +258 84 000 0000
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Configuração da API
+        const API_BASE = window.location.origin;
+
+        // Elements
+        const loginForm = document.getElementById('loginForm');
+        const alertContainer = document.getElementById('alertContainer');
+        const loginText = document.querySelector('.login-text');
+        const loadingSpinner = document.querySelector('.loading-spinner');
+
+        // Event listeners
+        loginForm.addEventListener('submit', handleLogin);
+
+        // Verificar se já está autenticado
+        document.addEventListener('DOMContentLoaded', () => {
+            checkCurrentAuth();
+        });
+
+        // Verificar se já está logado
+        let authCheckInProgress = false;
+
+        async function checkCurrentAuth() {
+            if (authCheckInProgress) {
+                console.log('� Verificação de auth já em andamento, pulando...');
+                return;
+            }
+
+            authCheckInProgress = true;
+            console.log('�🔍 Verificando autenticação atual...');
+
+            try {
+                const token = localStorage.getItem('adminToken') || sessionStorage.getItem('adminToken');
+                console.log('🎫 Token encontrado:', token ? 'SIM' : 'NÃO');
+
+                if (token) {
+                    console.log('📡 Verificando token no servidor...');
+                    const response = await fetch(`${API_BASE}/admin/auth/verify`, {
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+
+                    console.log('📥 Resposta da verificação:', response.status);
+
+                    if (response.ok) {
+                        const result = await response.json();
+                        console.log('📄 Resultado da verificação:', result);
+
+                        if (result.success) {
+                            console.log('✅ Token válido, redirecionando para /admin com token...');
+                            // Redirecionar com token na query string para evitar loop
+                            window.location.replace(`/admin?token=${token}`);
+                            return;
+                        }
+                    }
+
+                    // Token inválido, remover
+                    console.log('❌ Token inválido, removendo...');
+                    localStorage.removeItem('adminToken');
+                    sessionStorage.removeItem('adminToken');
+                }
+
+                // Verificar se há parâmetros de erro na URL
+                const urlParams = new URLSearchParams(window.location.search);
+                const error = urlParams.get('error');
+
+                if (error === 'session_expired') {
+                    showAlert('Sua sessão expirou. Por favor, faça login novamente.', 'warning');
+                } else if (error === 'auth_error') {
+                    showAlert('Erro de autenticação. Por favor, tente novamente.', 'danger');
+                }
+
+            } catch (error) {
+                console.error('❌ Erro na verificação:', error);
+                // Token inválido, remover
+                localStorage.removeItem('adminToken');
+                sessionStorage.removeItem('adminToken');
+            } finally {
+                authCheckInProgress = false;
+            }
+        }
+
+        // Handle login
+        let loginInProgress = false;
+
+        async function handleLogin(e) {
+            e.preventDefault();
+
+            if (loginInProgress) {
+                console.log('⏳ Login já em andamento...');
+                return;
+            }
+
+            loginInProgress = true;
+
+            const formData = new FormData(loginForm);
+            const username = formData.get('username');
+            const password = formData.get('password');
+            const rememberMe = formData.get('rememberMe') === 'on';
+
+            if (!username || !password) {
+                showAlert('Por favor, preencha todos os campos.', 'warning');
+                loginInProgress = false;
+                return;
+            }
+
+            setLoading(true);
+            clearAlert();
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        username,
+                        password,
+                        rememberMe
+                    })
+                });
+
+                const result = await response.json();
+                console.log('🔍 Resultado do login:', result);
+
+                if (result.success) {
+                    console.log('✅ Login bem-sucedido, salvando token...');
+
+                    // Salvar token
+                    if (rememberMe) {
+                        localStorage.setItem('adminToken', result.data.token);
+                        console.log('💾 Token salvo no localStorage');
+                    } else {
+                        sessionStorage.setItem('adminToken', result.data.token);
+                        console.log('💾 Token salvo no sessionStorage');
+                    }
+
+                    showAlert('Login realizado com sucesso! Redirecionando...', 'success');
+
+                    console.log('🔄 Iniciando redirecionamento em 1.5s...');
+
+                    // Redirecionar para o painel usando replace para evitar loop
+                    setTimeout(() => {
+                        console.log('🚀 Redirecionando para /admin com token...');
+                        window.location.replace(`/admin?token=${result.data.token}`);
+                    }, 1500);
+
+                } else {
+                    console.error('❌ Erro no login:', result.error);
+                    showAlert(result.error || 'Erro ao realizar login', 'danger');
+                }
+            } catch (error) {
+                console.error('❌ Erro na requisição:', error);
+                showAlert('Erro de conexão. Tente novamente.', 'danger');
+            } finally {
+                setLoading(false);
+                loginInProgress = false;
+            }
+        }
+
+        // Toggle password visibility
+        function togglePassword() {
+            const passwordInput = document.getElementById('password');
+            const passwordIcon = document.getElementById('passwordIcon');
+
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                passwordIcon.className = 'bi bi-eye-slash';
+            } else {
+                passwordInput.type = 'password';
+                passwordIcon.className = 'bi bi-eye';
+            }
+        }
+
+        // Show forgot password modal
+        function showForgotPassword() {
+            const modal = new bootstrap.Modal(document.getElementById('forgotPasswordModal'));
+            modal.show();
+        }
+
+        // UI helpers
+        function setLoading(loading) {
+            if (loading) {
+                loginText.style.display = 'none';
+                loadingSpinner.style.display = 'inline';
+                loginForm.querySelector('button').disabled = true;
+            } else {
+                loginText.style.display = 'inline';
+                loadingSpinner.style.display = 'none';
+                loginForm.querySelector('button').disabled = false;
+            }
+        }
+
+        function showAlert(message, type = 'info') {
+            const alertClass = `alert-${type}`;
+            const iconClass = {
+                'success': 'bi-check-circle',
+                'danger': 'bi-exclamation-triangle',
+                'warning': 'bi-exclamation-triangle',
+                'info': 'bi-info-circle'
+            };
+
+            alertContainer.innerHTML = `
+                <div class="alert ${alertClass} alert-dismissible fade show" role="alert">
+                    <i class="bi ${iconClass[type]} me-2"></i>
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            `;
+        }
+
+        function clearAlert() {
+            alertContainer.innerHTML = '';
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            // Enter para submeter form
+            if (e.key === 'Enter' && (e.target.id === 'username' || e.target.id === 'password')) {
+                e.preventDefault();
+                loginForm.dispatchEvent(new Event('submit'));
+            }
+        });
+
+        // Auto-focus no campo usuário
+        document.getElementById('username').focus();
+    </script>
+</body>
+
+</html>
