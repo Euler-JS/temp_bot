@@ -2,17 +2,20 @@
 require('dotenv').config();
 const express = require("express");
 const bodyParser = require("body-parser");
+const cookieParser = require("cookie-parser");
 const path = require("path");
 const WhatsAppApi = require("./whatsapp_api/connection");
 const WeatherService = require("./weather_api/weather_service");
 const OPENAI = require("./open_ai/open_ai");
 const SupabaseService = require("./database/supabase");
+const AdminAuthService = require("./admin/admin_auth");
 
 const app = express();
 const port = process.env.PORT || 3000;
 
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.json());
+app.use(cookieParser());
 
 // WHATSAPP API Configuration
 const token = process.env.WHATSAPP_TOKEN || "";
@@ -23,6 +26,42 @@ const whatsappApi = new WhatsAppApi(token, phoneNumberID);
 const weatherService = new WeatherService();
 const openaiService = new OPENAI(process.env.OPEN_AI || "");
 const dbService = new SupabaseService();
+const adminAuthService = new AdminAuthService(dbService.supabase);
+
+// Middleware para proteção de rotas admin
+const requireAdminAuth = async (req, res, next) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1] ||
+      req.cookies?.adminToken ||
+      req.query.token;
+
+    if (!token) {
+      if (req.path.startsWith('/admin/') && req.accepts('html')) {
+        return res.redirect('/admin/login');
+      }
+      return res.status(401).json({ success: false, error: 'Token de acesso requerido' });
+    }
+
+    const verification = await adminAuthService.verifyToken(token);
+
+    if (!verification.valid) {
+      if (req.path.startsWith('/admin/') && req.accepts('html')) {
+        return res.redirect('/admin/login?error=session_expired');
+      }
+      return res.status(401).json({ success: false, error: verification.error });
+    }
+
+    req.adminUser = verification.user;
+    next();
+
+  } catch (error) {
+    console.error('❌ Erro na verificação de autenticação:', error);
+    if (req.path.startsWith('/admin/') && req.accepts('html')) {
+      return res.redirect('/admin/login?error=auth_error');
+    }
+    return res.status(401).json({ success: false, error: 'Token inválido' });
+  }
+};
 
 // ===============================================
 // ADAPTADOR PARA NOVA ESTRUTURA AI
@@ -150,6 +189,15 @@ async function processAdvancedTextMessage(messageText, phoneNumber, enableAutoDe
 
   try {
     console.log(`🧠 Processamento avançado: "${messageText}"`);
+
+    // **NOVO** - Sistema multilíngue
+    if (enableAutoDetection && messageText.length > 10) {
+      console.log('🌍 Verificando se deve usar sistema multilíngue...');
+      const multilingualResult = await processMultilingualMessage(messageText, phoneNumber);
+      if (multilingualResult && multilingualResult.processed) {
+        return multilingualResult;
+      }
+    }
 
     // **NOVO** - Mostrar indicador de "escrevendo" enquanto processa
     await whatsappApi.enviarIndicadorEscrevendo(phoneNumber);
@@ -356,7 +404,7 @@ async function handleSuggestionsCommand(phoneNumber, user) {
     } else {
       // Fallback natural caso a AI falhe
       const temp = parseInt(weatherData.temperature);
-      finalMessage = `💡 Eh pá, com ${temp}°C em ${weatherData.city} hoje, `;
+      finalMessage = `💡 com ${temp}°C em ${weatherData.city} hoje, `;
 
       if (temp > 30) {
         finalMessage += `está bem quente! Podes pensar em ir para locais frescos, beber muitos líquidos, e vestir roupa leve. A praia seria fixe! `;
@@ -393,7 +441,7 @@ async function handleSuggestionsCommand(phoneNumber, user) {
   } catch (error) {
     console.error('❌ Erro ao processar comando /sugestoes:', error);
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      '❌ *Eh pá, algo deu errado!*\n\nTenta novamente em uns minutos.',
+      '❌ *algo deu errado!*\n\nTenta novamente em uns minutos.',
       phoneNumber
     );
   }
@@ -484,7 +532,7 @@ async function handleSafetyAdviceCommand(phoneNumber, user) {
   try {
     console.log(`⚠️ Comando /conselhos (segurança) acionado para ${phoneNumber}`);
 
-    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Eh pá, deixa eu ver que conselhos de segurança posso dar sobre o tempo...');
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'deixa eu ver que conselhos de segurança posso dar sobre o tempo...');
 
     // Criar contexto para os conselhos baseado no usuário
     const userContext = {
@@ -527,7 +575,7 @@ async function handleSafetyAdviceCommand(phoneNumber, user) {
     } else {
       // Fallback natural caso a AI falhe
       const temp = parseInt(weatherData.temperature);
-      finalMessage = `⚠️ Eh pá, com ${temp}°C em ${weatherData.city}, `;
+      finalMessage = `⚠️ com ${temp}°C em ${weatherData.city}, `;
 
       if (temp > 32) {
         finalMessage += `está muito perigoso! O calor pode causar desidratação e insolação. Bebe muita água mesmo que não tenhas sede, procura sombra e evita o sol forte. Se sentires tontura ou náusea, pede ajuda imediatamente! `;
@@ -578,7 +626,7 @@ async function handleSafetyAdviceCommand(phoneNumber, user) {
   } catch (error) {
     console.error('❌ Erro ao processar comando /conselhos:', error);
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      "❌ Eh pá, não consegui gerar os conselhos agora. Tenta mais tarde!",
+      "❌ não consegui gerar os conselhos agora. Tenta mais tarde!",
       phoneNumber
     );
     return null;
@@ -592,7 +640,7 @@ async function handleSafetyAdvice(analysis, phoneNumber, user) {
 
     if (!targetCity) {
       await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-        "🏙️ Eh pá, para dar conselhos de segurança preciso saber a cidade. Qual cidade te interessa?",
+        "🏙️ para dar conselhos de segurança preciso saber a cidade. Qual cidade te interessa?",
         phoneNumber
       );
       return null;
@@ -788,7 +836,7 @@ async function handleSafeZonesCommand(phoneNumber, user) {
   } catch (error) {
     console.error('❌ Erro ao processar comando /zonas_seguras:', error);
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      "❌ Eh pá, não consegui carregar as informações das zonas seguras agora. Tenta mais tarde!",
+      "❌ não consegui carregar as informações das zonas seguras agora. Tenta mais tarde!",
       phoneNumber
     );
     return null;
@@ -864,7 +912,7 @@ async function handleWeatherAlertsCommand(phoneNumber, user) {
   } catch (error) {
     console.error('❌ Erro ao processar comando /alertas:', error);
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      "❌ Eh pá, não consegui verificar os alertas agora. Para emergências ligue 119 (INGC).",
+      "❌ não consegui verificar os alertas agora. Para emergências ligue 119 (INGC).",
       phoneNumber
     );
     return null;
@@ -908,7 +956,7 @@ async function handleAdvancedWeatherData(analysis, phoneNumber, user) {
 
     if (!targetCity) {
       await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-        "🏙️ Eh pá, para ver o tempo preciso saber a cidade. Qual cidade te interessa?",
+        "🏙️ para ver o tempo preciso saber a cidade. Qual cidade te interessa?",
         phoneNumber
       );
       return null;
@@ -1083,7 +1131,7 @@ Máximo ${expertiseLevel === 'basic' ? '150' : expertiseLevel === 'intermediate'
   } catch (error) {
     console.error('❌ Erro em educação avançada:', error);
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      "📚 Eh pá, não consegui preparar a explicação agora. Tenta reformular a tua pergunta.",
+      "📚 não consegui preparar a explicação agora. Tenta reformular a tua pergunta.",
       phoneNumber
     );
     return null;
@@ -1093,7 +1141,7 @@ Máximo ${expertiseLevel === 'basic' ? '150' : expertiseLevel === 'intermediate'
 async function handleWeeklyForecast(city, phoneNumber, user) {
   try {
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      `📅 Eh pá, deixa ver como vai estar toda a semana em ${city}...`,
+      `📅 deixa ver como vai estar toda a semana em ${city}...`,
       phoneNumber
     );
 
@@ -1168,7 +1216,7 @@ async function handlePracticalTips(analysis, phoneNumber, user) {
 
     if (!targetCity) {
       await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-        "🏙️ Eh pá, para dar dicas fixes preciso saber a cidade. Qual cidade te interessa?",
+        "🏙️ para dar dicas fixes preciso saber a cidade. Qual cidade te interessa?",
         phoneNumber
       );
       return null;
@@ -1177,7 +1225,7 @@ async function handlePracticalTips(analysis, phoneNumber, user) {
     // Buscar dados atuais do clima
     const weatherData = await weatherService.getCurrentWeather(targetCity, user?.units || 'celsius');
 
-    await whatsappApi.enviarMensagemCarregamento(phoneNumber, `Eh pá, deixa eu ver umas dicas fixes para ti sobre ${targetCity}...`);
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, `deixa eu ver umas dicas fixes para ti sobre ${targetCity}...`);
 
     // Usar AI para gerar dicas naturais em português moçambicano
     const tipsResponse = await openaiService.generatePracticalTips(
@@ -1866,7 +1914,7 @@ Para ajustar configurações, digite "configurar alertas".
 }
 
 async function handleOffTopicAdvanced(analysis, phoneNumber, user) {
-  const offTopicMessage = `🤖 Eh pá, sou especialista em tempo e meteorologia! 
+  const offTopicMessage = `🤖 sou especialista em tempo e meteorologia! 
 
 🌤️ *Posso ajudar-te com:*
 • Temperatura actual de qualquer cidade
@@ -2026,7 +2074,7 @@ function getPersonalizedBody(weatherData, city) {
   const temp = weatherData?.temperature;
 
   if (!temp) {
-    return `Eh pá, aqui tens umas sugestões fixes para ${city}:`;
+    return `aqui tens umas sugestões fixes para ${city}:`;
   }
 
   if (temp > 32) {
@@ -2059,7 +2107,7 @@ async function sendIntelligentSuggestionsLegacy(phoneNumber, suggestions, city) 
           text: "💡 Umas sugestões fixes"
         },
         body: {
-          text: "Eh pá, com base no que perguntaste, talvez te interesse:"
+          text: "com base no que perguntaste, talvez te interesse:"
         },
         action: {
           buttons: suggestions.slice(0, 3).map((suggestion, index) => {
@@ -2249,6 +2297,39 @@ async function processAdvancedInteractiveMessage(interactive, phoneNumber) {
 
     // Handlers para as opções de interesse após sugestões
     switch (listId) {
+      // ===============================================
+      // HANDLERS ESPECÍFICOS PARA ZONAS SEGURAS DA BEIRA
+      // ===============================================
+      case "escolas_evacuacao":
+      case "escolas_evacuacao_beira":
+        await handleEscolasEvacuacaoInfo(phoneNumber, user);
+        break;
+
+      case "hospitais_beira":
+        await handleHospitaisBeira(phoneNumber, user);
+        break;
+
+      case "bairros_seguros":
+        await handleBairrosSegurosBeira(phoneNumber, user);
+        break;
+
+      case "centros_evacuacao":
+        await handleCentrosEvacuacaoGerais(phoneNumber, user);
+        break;
+
+      case "contactos_ingc":
+        await handleContactosINGCBeira(phoneNumber, user);
+        break;
+
+      case "rotas_evacuacao":
+        await handleRotasEvacuacaoInfo(phoneNumber, user);
+        break;
+
+      case "kit_emergencia":
+        await handleKitEmergenciaInfo(phoneNumber, user);
+        break;
+
+      // Handlers originais mantidos
       case "previsao_7_dias":
         await handleForecastRequest(phoneNumber, 7);
         break;
@@ -2408,7 +2489,7 @@ async function handleForecastRequest(phoneNumber, days = 7) {
     const user = await getUserByContact(phoneNumber);
     const city = user?.preferred_city || user?.last_city || 'Maputo';
 
-    await whatsappApi.enviarMensagemCarregamento(phoneNumber, `🔍 Eh pá, deixa ver a previsão de ${days} dias para ${city}...`);
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, `🔍 deixa ver a previsão de ${days} dias para ${city}...`);
 
     const forecastData = await weatherService.getWeatherForecast(city, days);
 
@@ -2444,7 +2525,7 @@ async function handleForecastRequest(phoneNumber, days = 7) {
       await whatsappApi.enviarMensagemUsandoWhatsappAPI(forecastMessage, phoneNumber);
     } else {
       await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-        `❌ Eh pá, não consegui obter a previsão para ${city}. Verifica se o nome da cidade está correto e tenta novamente.`,
+        `❌ não consegui obter a previsão para ${city}. Verifica se o nome da cidade está correto e tenta novamente.`,
         phoneNumber
       );
     }
@@ -2461,7 +2542,7 @@ async function handleClothingAdviceRequest(phoneNumber) {
     const user = await getUserByContact(phoneNumber);
     const city = user?.preferred_city || user?.last_city || 'Maputo';
 
-    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Eh pá, deixa ver que roupa é melhor para hoje...');
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'deixa ver que roupa é melhor para hoje...');
 
     const weatherData = await weatherService.getCurrentWeather(city);
     const temp = parseInt(weatherData.temperature);
@@ -2532,7 +2613,7 @@ async function handleActivitySuggestionsRequest(phoneNumber) {
       await whatsappApi.enviarMensagemUsandoWhatsappAPI(suggestions.message, phoneNumber);
     } else {
       await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-        '❌ Eh pá, não consegui gerar sugestões agora. Tenta mais tarde.',
+        '❌ não consegui gerar sugestões agora. Tenta mais tarde.',
         phoneNumber
       );
     }
@@ -2714,7 +2795,7 @@ async function handleHealthCareAdviceRequest(phoneNumber) {
     const user = await getUserByContact(phoneNumber);
     const city = user?.preferred_city || user?.last_city || 'Maputo';
 
-    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Eh pá, deixa ver que cuidados de saúde são importantes com este tempo...');
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'deixa ver que cuidados de saúde são importantes com este tempo...');
 
     const weatherData = await weatherService.getCurrentWeather(city);
 
@@ -2905,7 +2986,7 @@ async function handleDynamicAdviceRequest(phoneNumber, listId, listTitle) {
     const user = await getUserByContact(phoneNumber);
     const city = user?.preferred_city || user?.last_city || 'Maputo';
 
-    await whatsappApi.enviarMensagemCarregamento(phoneNumber, `Eh pá, deixa ver mais sobre "${listTitle}"...`);
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, `deixa ver mais sobre "${listTitle}"...`);
 
     const weatherData = await weatherService.getCurrentWeather(city);
 
@@ -2930,29 +3011,182 @@ async function handleDynamicAdviceRequest(phoneNumber, listId, listTitle) {
   }
 }
 
+// =============================================================
+// 🌍 SISTEMA MULTILÍNGUE - PROCESSAMENTO DE MÚLTIPLOS IDIOMAS  
+// =============================================================
+
+async function processMultilingualMessage(messageText, phoneNumber) {
+  try {
+    console.log(`🌍 Iniciando processamento multilíngue de: "${messageText}"`);
+
+    // 1. Processar mensagem multilíngue
+    const multilingualResult = await openaiService.processMultilingualMessage(messageText, phoneNumber);
+
+    if (!multilingualResult || multilingualResult.error) {
+      console.log('⚠️ Processamento multilíngue falhou, continuando em português');
+      return null; // Retornar null para continuar com processamento normal
+    }
+
+    const detectedLanguage = multilingualResult.detected_language;
+    const processedMessage = multilingualResult.processed_message;
+
+    console.log(`📊 Idioma detectado: ${detectedLanguage}`);
+    console.log(`🔄 Mensagem processada: "${processedMessage}"`);
+
+    // 2. Se for português, continuar normalmente
+    if (detectedLanguage === 'pt') {
+      console.log('✅ Idioma é português, continuando processamento normal');
+      return null; // Retornar null para continuar com fluxo normal
+    }
+
+    // 3. Buscar usuário
+    const user = await getUserByContact(phoneNumber);
+
+    // 4. Processar análise AI da mensagem traduzida
+    const analysis = multilingualResult.analysis;
+    const isWeatherQuery = openaiService.isWeatherRelatedQuery(analysis);
+
+    console.log(`🌤️ É pergunta sobre clima? ${isWeatherQuery}`);
+
+    if (isWeatherQuery) {
+      // É sobre clima - processar normalmente e traduzir resposta
+      const adaptedAnalysis = adaptAIAnalysisToLegacyFormat(analysis, processedMessage);
+
+      if (adaptedAnalysis.city) {
+        // Buscar dados meteorológicos
+        const weatherData = await weatherService.getCurrentWeather(adaptedAnalysis.city);
+
+        // Gerar resposta multilíngue
+        const response = await openaiService.generateMultilingualWeatherResponse(
+          weatherData,
+          {
+            queryCount: user?.query_count || 0,
+            lastCity: user?.last_city,
+            preferredCity: user?.preferred_city
+          },
+          detectedLanguage
+        );
+
+        if (response.success) {
+          await whatsappApi.enviarMensagemUsandoWhatsappAPI(response.message, phoneNumber);
+
+          // Salvar dados do usuário
+          await saveOrUpdateAdvancedUser(phoneNumber, {
+            query_count: (user?.query_count || 0) + 1,
+            last_city: adaptedAnalysis.city,
+            last_language: detectedLanguage,
+            last_interaction_type: 'multilingual_weather'
+          });
+
+          console.log(`✅ Resposta multilíngue enviada em ${detectedLanguage}`);
+          return { processed: true, language: detectedLanguage };
+        }
+      }
+    } else {
+      // Não é sobre clima - resposta amigável multilíngue
+      const friendlyResponse = await openaiService.generateMultilingualFriendlyResponse(
+        messageText,
+        analysis,
+        {
+          queryCount: user?.query_count || 0,
+          lastCity: user?.last_city
+        },
+        detectedLanguage
+      );
+
+      if (friendlyResponse.success) {
+        await whatsappApi.enviarMensagemUsandoWhatsappAPI(friendlyResponse.message, phoneNumber);
+
+        // Salvar interação
+        await saveOrUpdateAdvancedUser(phoneNumber, {
+          query_count: (user?.query_count || 0) + 1,
+          last_language: detectedLanguage,
+          last_interaction_type: 'multilingual_friendly'
+        });
+
+        console.log(`✅ Resposta amigável multilíngue enviada em ${detectedLanguage}`);
+        return { processed: true, language: detectedLanguage };
+      }
+    }
+
+    // Se chegou até aqui, algo deu errado - continuar com processamento normal
+    return null;
+
+  } catch (error) {
+    console.log('❌ Erro no processamento multilíngue:', error.message);
+    return null; // Retornar null para continuar com processamento normal
+  }
+}
+
 async function processLocationMessage(location, phoneNumber) {
   try {
     const { latitude, longitude } = location;
 
-    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Deixa ver onde tu estás');
+    await whatsappApi.enviarMensagemRapidaProcessando(phoneNumber, '📍 Localizando e buscando clima...');
 
-    // Aqui você poderia usar uma API de geocoding reverso
-    // Por exemplo, OpenWeatherMap, Google Maps, etc.
+    // Buscar clima diretamente pelas coordenadas
+    const weatherData = await weatherService.getCurrentWeatherByCoordinates(latitude, longitude);
 
-    const locationMessage = `📍 *Localização Recebida*
+    // Buscar ou criar usuário
+    const user = await getUserByContact(phoneNumber);
 
-Latitude: ${latitude}
-Longitude: ${longitude}
+    // Atualizar cidade preferida do usuário baseada na localização
+    await saveOrUpdateAdvancedUser(phoneNumber, {
+      preferred_city: weatherData.city,
+      last_location: {
+        latitude: latitude,
+        longitude: longitude,
+        city: weatherData.city
+      },
+      last_interaction_type: 'location_weather'
+    });
 
-💡 Para obter o clima da sua localização, me diga o nome da cidade mais próxima.
+    // Gerar resposta contextualizada com IA
+    const aiResponse = await openaiService.generateSimpleWeatherResponse(weatherData, user);
 
-Exemplo: "clima aqui" ou "temperatura atual"`;
+    const locationMessage = `📍 *${weatherData.city}, ${weatherData.country}*
 
-    await whatsappApi.enviarMensagemUsandoWhatsappAPI(locationMessage, phoneNumber);
+🌡️ **Temperatura:** ${weatherData.temperature}${weatherData.units}
+💨 **Sensação térmica:** ${weatherData.feelsLike}${weatherData.units}
+🌤️ **Condições:** ${weatherData.description}
+� **Humidade:** ${weatherData.humidity}%
+🌪️ **Vento:** ${weatherData.windSpeed} km/h
+
+${aiResponse.message}
+
+💡 **Dica:** Sua localização foi salva como cidade preferida. Use "/clima" para updates rápidos!`;
+
+    await whatsappApi.enviarMensagemComIndicador(locationMessage, phoneNumber);
+
+    // Verificar se há alertas para a região
+    if (weatherData.temperature > 30 || weatherData.humidity > 80) {
+      setTimeout(async () => {
+        const alertMessage = await openaiService.generateLocationBasedAlert(weatherData, user);
+        if (alertMessage.success) {
+          await whatsappApi.enviarMensagemUsandoWhatsappAPI(`⚠️ ${alertMessage.message}`, phoneNumber);
+        }
+      }, 2000);
+    }
 
   } catch (error) {
     console.error('❌ Erro ao processar localização:', error);
-    await whatsappApi.enviarMensagemErro(phoneNumber, "Erro ao processar localização");
+
+    // Fallback caso falhe a busca do clima
+    const { latitude, longitude } = location;
+    const fallbackMessage = `📍 *Localização Recebida*
+
+**Coordenadas:** ${latitude}, ${longitude}
+
+❌ Não consegui buscar o clima automaticamente desta localização.
+
+💡 **Como obter o clima:**
+• Digite o nome da cidade mais próxima
+• Use: "clima [cidade]"
+• Ou envie "/clima" e me diga sua cidade
+
+**Exemplo:** "clima Beira" ou "temperatura Maputo"`;
+
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(fallbackMessage, phoneNumber);
   }
 }
 
@@ -2964,7 +3198,7 @@ function getContextualLoadingMessage(context, city) {
   const { timeframe, weatherAspect } = context || {};
 
   if (timeframe === 'amanha') return `🔍 Deixa ver como vai estar amanhã em ${city}...`;
-  if (weatherAspect === 'chuva') return `☔ Eh pá, vou ver se vai chover em ${city}...`;
+  if (weatherAspect === 'chuva') return `☔ vou ver se vai chover em ${city}...`;
   if (weatherAspect === 'temperatura') return `🌡️ Vou verificar a temperatura actual em ${city}...`;
 
   return `🔍 Deixa eu ver como está o tempo em ${city}...`;
@@ -3012,7 +3246,7 @@ async function processBasicFallback(messageText, phoneNumber) {
   console.log('🔄 Usando fallback básico para:', messageText);
 
   await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-    "🤖 Eh pá, não consegui entender bem a tua mensagem.\n\n💬 Podes tentar assim:\n• 'Clima em [cidade]'\n• 'Previsão para amanhã'\n• 'O que é [termo meteorológico]?'\n\nComo é que te posso ajudar?",
+    "🤖 não consegui entender bem a tua mensagem.\n\n💬 Podes tentar assim:\n• 'Clima em [cidade]'\n• 'Previsão para amanhã'\n• 'O que é [termo meteorológico]?'\n\nComo é que te posso ajudar?",
     phoneNumber
   );
 }
@@ -3021,7 +3255,7 @@ async function sendAdvancedHelp(phoneNumber, user) {
   const language = user?.language || 'pt';
   const expertiseLevel = user?.expertise_level || 'basic';
 
-  let helpMessage = `🤖 *Eh pá, sou o teu assistente do tempo!*\n\n`;
+  let helpMessage = `🤖 *sou o teu assistente do tempo!*\n\n`;
 
   helpMessage += `⭐ *COMANDOS ESPECIAIS:*\n`;
   helpMessage += `• \`/sugestoes\` - Vou dar-te umas sugestões fixes\n`;
@@ -3110,23 +3344,234 @@ app.get("/health", async (req, res) => {
 // ROTAS DO PAINEL ADMINISTRATIVO
 // ===============================================
 
-// Rota principal do painel admin - serve o HTML
-app.get('/admin', (req, res) => {
-  res.sendFile(path.join(__dirname, 'admin', 'index.html'));
+// ===============================================
+// ROTAS DE AUTENTICAÇÃO ADMINISTRATIVA
+// ===============================================
+
+// Rota de login
+app.get('/admin/login', (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin', 'login.html'));
 });
 
-// Servir arquivo JS do admin (duas rotas para compatibilidade)
+// API de login
+app.post('/admin/auth/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    const ipAddress = req.ip || req.connection.remoteAddress;
+    const userAgent = req.get('User-Agent');
+
+    const result = await adminAuthService.login(username, password, ipAddress, userAgent);
+
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(401).json(result);
+    }
+  } catch (error) {
+    console.error('❌ Erro no login:', error);
+    res.status(500).json({ success: false, error: 'Erro interno do servidor' });
+  }
+});
+
+// API de logout
+app.post('/admin/auth/logout', adminAuthService.middlewareAuth(), async (req, res) => {
+  try {
+    const result = await adminAuthService.logout(req.adminUser.id);
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Erro no logout:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Verificar token
+app.get('/admin/auth/verify', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+
+    if (!token) {
+      return res.status(401).json({ success: false, error: 'Token requerido' });
+    }
+
+    const verification = await adminAuthService.verifyToken(token);
+
+    if (verification.valid) {
+      res.json({ success: true, data: verification.user });
+    } else {
+      res.status(401).json({ success: false, error: verification.error });
+    }
+  } catch (error) {
+    res.status(401).json({ success: false, error: 'Token inválido' });
+  }
+});
+
+// Obter dados do usuário atual
+app.get('/admin/auth/me', adminAuthService.middlewareAuth(), async (req, res) => {
+  try {
+    res.json({ success: true, data: req.adminUser });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ===============================================
+// ROTAS DE GESTÃO DE USUÁRIOS ADMINISTRATIVOS
+// ===============================================
+
+// Listar usuários administrativos
+app.get('/admin/auth/users',
+  adminAuthService.middlewareAuth(),
+  adminAuthService.middlewarePermission('manage_admins'),
+  async (req, res) => {
+    try {
+      const result = await adminAuthService.getAllAdminUsers();
+      res.json(result);
+    } catch (error) {
+      console.error('❌ Erro ao listar usuários admin:', error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+);
+
+// Criar usuário administrativo
+app.post('/admin/auth/users',
+  adminAuthService.middlewareAuth(),
+  adminAuthService.middlewarePermission('manage_admins'),
+  async (req, res) => {
+    try {
+      const result = await adminAuthService.createAdminUser(req.body, req.adminUser.id);
+      res.json(result);
+    } catch (error) {
+      console.error('❌ Erro ao criar usuário admin:', error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+);
+
+// Obter usuário administrativo específico
+app.get('/admin/auth/users/:id',
+  adminAuthService.middlewareAuth(),
+  adminAuthService.middlewarePermission('manage_admins'),
+  async (req, res) => {
+    try {
+      const { data, error } = await adminAuthService.supabase
+        .from('admin_users')
+        .select(`
+          id, username, email, full_name, role, status,
+          permissions, last_login, created_at, updated_at, profile_data
+        `)
+        .eq('id', req.params.id)
+        .single();
+
+      if (error) throw error;
+
+      if (!data) {
+        return res.status(404).json({ success: false, error: 'Usuário não encontrado' });
+      }
+
+      res.json({ success: true, data });
+    } catch (error) {
+      console.error('❌ Erro ao obter usuário admin:', error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+);
+
+// Atualizar usuário administrativo
+app.put('/admin/auth/users/:id',
+  adminAuthService.middlewareAuth(),
+  adminAuthService.middlewarePermission('manage_admins'),
+  async (req, res) => {
+    try {
+      const result = await adminAuthService.updateAdminUser(
+        req.params.id,
+        req.body,
+        req.adminUser.id
+      );
+      res.json(result);
+    } catch (error) {
+      console.error('❌ Erro ao atualizar usuário admin:', error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+);
+
+// Deletar usuário administrativo
+app.delete('/admin/auth/users/:id',
+  adminAuthService.middlewareAuth(),
+  adminAuthService.middlewarePermission('manage_admins'),
+  async (req, res) => {
+    try {
+      const result = await adminAuthService.deleteAdminUser(req.params.id, req.adminUser.id);
+      res.json(result);
+    } catch (error) {
+      console.error('❌ Erro ao deletar usuário admin:', error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+);
+
+// Histórico de login
+app.get('/admin/auth/login-history',
+  adminAuthService.middlewareAuth(),
+  adminAuthService.middlewarePermission('view_logs'),
+  async (req, res) => {
+    try {
+      const userId = req.query.user_id;
+      const result = await adminAuthService.getLoginHistory(userId);
+      res.json(result);
+    } catch (error) {
+      console.error('❌ Erro ao obter histórico de login:', error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+);
+
+// Log de auditoria
+app.get('/admin/auth/audit-log',
+  adminAuthService.middlewareAuth(),
+  adminAuthService.middlewarePermission('view_logs'),
+  async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit) || 100;
+      const offset = parseInt(req.query.offset) || 0;
+      const result = await adminAuthService.getAuditLog(limit, offset);
+      res.json(result);
+    } catch (error) {
+      console.error('❌ Erro ao obter log de auditoria:', error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+);
+
+// Servir arquivos estáticos do admin
+app.get('/admin/admin_users_manager.js', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript');
+  res.sendFile(path.join(__dirname, 'admin', 'admin_users_manager.js'));
+});
+
+app.get('/admin/test_admin_routes.js', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript');
+  res.sendFile(path.join(__dirname, 'admin', 'test_admin_routes.js'));
+});
+
+// Rota principal do painel admin - serve o HTML (com verificação de autenticação)
+app.get('/admin', requireAdminAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin', 'index.html'));
+});// Servir arquivo JS do admin (duas rotas para compatibilidade)
 app.get('/admin/admin.js', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript');
   res.sendFile(path.join(__dirname, 'admin', 'admin.js'));
 });
 
 // Rota adicional para compatibilidade com caminho relativo
 app.get('/admin.js', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript');
   res.sendFile(path.join(__dirname, 'admin', 'admin.js'));
 });
 
 // API endpoints para o painel administrativo
-app.get("/admin/stats", async (req, res) => {
+app.get("/admin/stats", requireAdminAuth, async (req, res) => {
   try {
     const stats = await dbService.getStats();
     const activeUsers = await dbService.getActiveUsers(7);
@@ -3150,7 +3595,7 @@ app.get("/admin/stats", async (req, res) => {
   }
 });
 
-app.get("/admin/users", async (req, res) => {
+app.get("/admin/users", requireAdminAuth, async (req, res) => {
   try {
     const users = await dbService.getAllUsers();
 
@@ -3170,7 +3615,7 @@ app.get("/admin/users", async (req, res) => {
   }
 });
 
-app.get("/admin/analytics", async (req, res) => {
+app.get("/admin/analytics", requireAdminAuth, async (req, res) => {
   try {
     const users = await dbService.getAllUsers();
 
@@ -3194,7 +3639,7 @@ app.get("/admin/analytics", async (req, res) => {
   }
 });
 
-app.get("/admin/users/:contact", async (req, res) => {
+app.get("/admin/users/:contact", requireAdminAuth, async (req, res) => {
   try {
     const { contact } = req.params;
     const user = await dbService.getUserByContact(contact);
@@ -3216,7 +3661,7 @@ app.get("/admin/users/:contact", async (req, res) => {
   }
 });
 
-app.get("/admin/users/export", async (req, res) => {
+app.get("/admin/users/export", requireAdminAuth, async (req, res) => {
   try {
     const users = await dbService.getAllUsers();
 
@@ -3235,7 +3680,7 @@ app.get("/admin/users/export", async (req, res) => {
   }
 });
 
-app.get("/admin/logs", async (req, res) => {
+app.get("/admin/logs", requireAdminAuth, async (req, res) => {
   try {
     const logs = await dbService.getAdminLogs(100);
 
@@ -3272,7 +3717,7 @@ app.get("/admin/logs", async (req, res) => {
       data: fallbackLogs
     });
   }
-}); app.post("/admin/settings", async (req, res) => {
+}); app.post("/admin/settings", requireAdminAuth, async (req, res) => {
   try {
     const { defaultExpertise, enableProgression } = req.body;
 
@@ -3293,7 +3738,7 @@ app.get("/admin/logs", async (req, res) => {
 // ROTAS DO SISTEMA DE ALERTAS
 // ===============================================
 
-app.get("/admin/region-stats", async (req, res) => {
+app.get("/admin/region-stats", requireAdminAuth, async (req, res) => {
   try {
     const users = await dbService.getAllUsers();
     const regionStats = {};
@@ -3313,7 +3758,7 @@ app.get("/admin/region-stats", async (req, res) => {
   }
 });
 
-app.get("/admin/region-users/:region", async (req, res) => {
+app.get("/admin/region-users/:region", requireAdminAuth, async (req, res) => {
   try {
     const { region } = req.params;
     let users;
@@ -3340,7 +3785,7 @@ app.get("/admin/region-users/:region", async (req, res) => {
   }
 });
 
-app.get("/admin/weather/:region", async (req, res) => {
+app.get("/admin/weather/:region", requireAdminAuth, async (req, res) => {
   try {
     const { region } = req.params;
     const weatherData = await weatherService.getCurrentWeather(region);
@@ -3355,7 +3800,7 @@ app.get("/admin/weather/:region", async (req, res) => {
   }
 });
 
-app.get("/admin/users-by-region", async (req, res) => {
+app.get("/admin/users-by-region", requireAdminAuth, async (req, res) => {
   try {
     const usersByRegion = await dbService.getUsersCountByRegion();
 
@@ -3369,7 +3814,7 @@ app.get("/admin/users-by-region", async (req, res) => {
   }
 });
 
-app.post("/admin/send-alert", async (req, res) => {
+app.post("/admin/send-alert", requireAdminAuth, async (req, res) => {
   try {
     const { region, type, title, message, includeWeather, password } = req.body;
 
@@ -3511,7 +3956,7 @@ app.post("/admin/send-alert", async (req, res) => {
   }
 });
 
-app.get("/admin/recent-alerts", async (req, res) => {
+app.get("/admin/recent-alerts", requireAdminAuth, async (req, res) => {
   try {
     // Buscar alertas recentes do banco de dados
     const recentAlerts = await dbService.getRecentAlerts();
@@ -3527,7 +3972,7 @@ app.get("/admin/recent-alerts", async (req, res) => {
 });
 
 // Rota para estatísticas específicas do clima
-app.get("/admin/weather-stats", async (req, res) => {
+app.get("/admin/weather-stats", requireAdminAuth, async (req, res) => {
   try {
     // Buscar estatísticas de clima específicas
     const users = await dbService.getAllUsers();
@@ -4043,7 +4488,7 @@ function generateNaturalFallbackTips(weatherData, city, originalMessage) {
   const isRaining = weatherData.description.toLowerCase().includes('chuva');
   const message = (originalMessage || '').toLowerCase();
 
-  let response = `💡 *Eh pá, aqui tens umas dicas fixes para ${city}!*\n\n`;
+  let response = `💡 *aqui tens umas dicas fixes para ${city}!*\n\n`;
 
   response += `🌤️ *Como está agora:* ${temp}°C - ${weatherData.description}\n\n`;
 
@@ -4401,6 +4846,391 @@ async function handleUrgencyContactsRequest(phoneNumber) {
 📝 *IMPORTANTE:* Guarde estes números no papel também - telemóvel pode ficar sem bateria!`;
 
   await whatsappApi.enviarMensagemUsandoWhatsappAPI(urgencyMessage, phoneNumber);
+}
+
+// ===============================================
+// HANDLERS ESPECÍFICOS PARA CENTROS DE EVACUAÇÃO DA BEIRA
+// ===============================================
+
+async function handleEscolasEvacuacaoInfo(phoneNumber, user) {
+  try {
+    console.log('🏫 Handler: Escolas de Evacuação da Beira');
+
+    await whatsappApi.enviarMensagemRapidaProcessando(phoneNumber, 'Buscando escolas de evacuação');
+
+    const weatherData = await weatherService.getCurrentWeather('Beira');
+    const escolasInfo = await openaiService.generateEvacuationCentersInfo(weatherData, user);
+
+    await whatsappApi.enviarMensagemComIndicador(escolasInfo.message, phoneNumber);
+
+    // Atualizar dados do usuário
+    await saveOrUpdateAdvancedUser(phoneNumber, {
+      last_interaction_type: 'escolas_evacuacao',
+      preferred_city: 'Beira'
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao processar escolas de evacuação:', error);
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      '❌ Erro ao carregar informações das escolas. Contacte INGC: 119',
+      phoneNumber
+    );
+  }
+}
+
+async function handleHospitaisBeira(phoneNumber, user) {
+  try {
+    console.log('🏥 Handler: Hospitais da Beira');
+
+    await whatsappApi.enviarMensagemRapidaProcessando(phoneNumber, 'Carregando hospitais da Beira');
+
+    const weatherData = await weatherService.getCurrentWeather('Beira');
+    const hospitaisInfo = await openaiService.generateEmergencyHospitalsInfo(weatherData, user);
+
+    await whatsappApi.enviarMensagemComIndicador(hospitaisInfo.message, phoneNumber);
+
+    await saveOrUpdateAdvancedUser(phoneNumber, {
+      last_interaction_type: 'hospitais_beira',
+      preferred_city: 'Beira'
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao processar hospitais:', error);
+    const fallbackMessage = `🏥 *HOSPITAIS DA BEIRA - 24H*
+
+🔴 **PRINCIPAIS:**
+• Hospital Central da Beira (Manga) - Principal
+• Hospital Macúti (Macúti) - Emergências costeiras  
+• Centro de Saúde de Munhava (Munhava)
+
+📱 **CONTACTOS DE EMERGÊNCIA:**
+• Ambulância: 117
+• Hospital Central: +258 23 323 229
+• INEM: 198
+
+⚕️ **COMO CHEGAR:**
+• Hospital Central: Centro da cidade (Manga)
+• Hospital Macúti: Zona turística (Macúti)
+• Centro Munhava: Norte da cidade
+
+💡 **EM EMERGÊNCIA:** Qualquer hospital recebe casos urgentes!`;
+
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(fallbackMessage, phoneNumber);
+  }
+}
+
+async function handleBairrosSegurosBeira(phoneNumber, user) {
+  try {
+    console.log('🏘️ Handler: Bairros Seguros da Beira');
+
+    await whatsappApi.enviarMensagemRapidaProcessando(phoneNumber, 'Analisando segurança por bairros');
+
+    const weatherData = await weatherService.getCurrentWeather('Beira');
+
+    const bairrosMessage = `🏘️ *BAIRROS DA BEIRA - ANÁLISE DE SEGURANÇA*
+
+🌦️ **Condições atuais:** ${weatherData.temperature}°C, ${weatherData.description}
+
+✅ **BAIRROS MAIS SEGUROS (Zonas altas/boa infraestrutura):**
+• **Palmeiras** - Zona elevada, menor risco de alagamentos
+• **Manga (Centro)** - Infraestrutura melhor, hospitais próximos
+• **Cidade de Cimento** - Estruturas sólidas, centro histórico
+• **Macúti** - Elevação adequada (cuidado apenas com erosão costeira)
+
+⚠️ **BAIRROS COM MAIOR RISCO:**
+• **Goto** - Drenagem deficiente, zonas baixas propensas a alagamentos
+• **Chaimite** - Algumas áreas baixas podem alagar
+• **Munhava** - Partes baixas específicas têm risco
+• **Ndunda** - Vias não pavimentadas, área em expansão
+
+🏫 **CENTROS DE EVACUAÇÃO DISPONÍVEIS POR BAIRRO:**
+• **Munhava:** Escola Munhava (500+ pessoas)
+• **Manga:** Escola Samora Machel (600+ pessoas) + Hospital Central
+• **Chaimite:** Escola Chaimite (400+ pessoas)
+• **Goto:** Escola Goto (450+ pessoas) - usar só se necessário
+• **Macúti:** Escola Josina Machel (500+ pessoas) + Hospital Macúti
+• **Palmeiras:** Escola Palmeiras (350+ pessoas) - zona mais segura
+
+🗺️ **RECOMENDAÇÕES DE EVACUAÇÃO:**
+• **Se está em zona de risco:** Dirija-se para Palmeiras ou Manga
+• **Rotas principais:** Evite estradas de terra quando possível
+• **Transporte:** Use chapas/táxis para longas distâncias
+
+📱 **Contacto INGC Beira:** 119`;
+
+    await whatsappApi.enviarMensagemComIndicador(bairrosMessage, phoneNumber);
+
+    await saveOrUpdateAdvancedUser(phoneNumber, {
+      last_interaction_type: 'bairros_seguros_beira',
+      preferred_city: 'Beira'
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao processar bairros seguros:', error);
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      '❌ Erro ao carregar informações dos bairros. Contacte INGC: 119',
+      phoneNumber
+    );
+  }
+}
+
+async function handleCentrosEvacuacaoGerais(phoneNumber, user) {
+  try {
+    console.log('🛡️ Handler: Centros de Evacuação Gerais');
+
+    await whatsappApi.enviarMensagemRapidaProcessando(phoneNumber, 'Carregando centros de evacuação');
+
+    const weatherData = await weatherService.getCurrentWeather(user?.preferred_city || 'Beira');
+    const centrosInfo = await openaiService.generateEvacuationCentersInfo(weatherData, user);
+
+    await whatsappApi.enviarMensagemComIndicador(centrosInfo.message, phoneNumber);
+
+  } catch (error) {
+    console.error('❌ Erro ao processar centros gerais:', error);
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      '❌ Erro ao carregar centros. Para emergências contacte INGC: 119',
+      phoneNumber
+    );
+  }
+}
+
+async function handleContactosINGCBeira(phoneNumber, user) {
+  try {
+    console.log('📱 Handler: Contactos INGC Beira');
+
+    const contactosMessage = `📱 *CONTACTOS OFICIAIS INGC BEIRA*
+
+🚨 **EMERGÊNCIAS PRIORITÁRIAS:**
+• **INGC (Gestão de Calamidades): 119**
+• **Polícia: 197**
+• **Bombeiros: 198**
+
+🏢 **INGC BEIRA - ESPECÍFICOS:**
+• Comando Provincial Sofala: +258 23 323 206
+• Cruz Vermelha Beira: +258 23 323 390
+• Conselho Municipal da Beira: +258 23 323 041
+
+🏥 **SAÚDE DE EMERGÊNCIA:**
+• Hospital Central da Beira: +258 23 323 229
+• Hospital Macúti: +258 23 312 345
+• Ambulância: 117
+
+📻 **COMUNICAÇÕES:**
+• Rádio Moçambique Beira: +258 23 323 456
+• Rádio Comunitária Beira: +258 23 345 678
+
+⚡ **SERVIÇOS ESSENCIAIS:**
+• EDM Beira (Energia): +258 23 323 890
+• Águas da Beira: +258 23 321 234
+
+🌊 **PORTOS E TRANSPORTE:**
+• CFM Beira (Portos): +258 23 321 781
+• Terminal Rodoviário: +258 23 334 567
+
+💡 **DICAS PARA LIGAR:**
+1. Mantenha calma
+2. Diga sua localização (bairro específico)
+3. Descreva brevemente a emergência
+4. Siga instruções dos operadores
+5. Não desligue até ser autorizado
+
+🔋 **IMPORTANTE:** 
+• Guarde estes números também no papel
+• Mantenha telemóvel carregado
+• Em emergência grave: ligue 119 primeiro
+
+📍 **Bairros de referência para localização:**
+Munhava, Chaimite (Norte) | Manga, Palmeiras (Centro) | Goto, Macúti (Sul)`;
+
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(contactosMessage, phoneNumber);
+
+    await saveOrUpdateAdvancedUser(phoneNumber, {
+      last_interaction_type: 'contactos_ingc_beira',
+      preferred_city: 'Beira'
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao processar contactos:', error);
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      '📱 **CONTACTOS BÁSICOS:**\n• INGC: 119\n• Polícia: 197\n• Bombeiros: 198\n• Hospital Central Beira: +258 23 323 229',
+      phoneNumber
+    );
+  }
+}
+
+async function handleRotasEvacuacaoInfo(phoneNumber, user) {
+  try {
+    console.log('🗺️ Handler: Rotas de Evacuação');
+
+    await whatsappApi.enviarMensagemRapidaProcessando(phoneNumber, 'Calculando rotas seguras');
+
+    const rotasMessage = `🗺️ *ROTAS DE EVACUAÇÃO - CIDADE DA BEIRA*
+
+🛣️ **PRINCIPAIS VIAS PARA EVACUAÇÃO:**
+
+**DO NORTE (Munhava, Chaimite):**
+• Via EN6 → Centro (Manga) → Centros seguros
+• Estrada de Munhava → Hospital Central
+• Evitar: estradas de terra quando chover
+
+**DO CENTRO (Manga, Palmeiras):**
+• Já em zona relativamente segura
+• Hospital Central e Escola Samora Machel próximos
+• Palmeiras: zona mais alta - ficar no local
+
+**DO SUL (Goto, Macúti):**
+• Via EN6 → Norte para Manga/Palmeiras
+• ⚠️ Goto: evitar zonas baixas, sair rapidamente
+• Macúti: EN6 costeira ou vias internas
+
+🚫 **EVITAR DURANTE EVACUAÇÃO:**
+• **Estradas de terra** (especialmente com chuva)
+• **Zonas baixas** conhecidas por alagar
+• **Pontes baixas** durante cheia
+• **Atalhos por Goto** (usar vias principais)
+
+✅ **ROTAS PRIORITÁRIAS (MAIS SEGURAS):**
+1. **EN6** - Via principal, pavimentada
+2. **Estrada Central** - Liga bairros ao centro
+3. **Via Costeira** - Macúti → Centro (se sem tempestade)
+
+🚗 **MEIOS DE TRANSPORTE:**
+• **Chapas:** Funcionam nas vias principais
+• **Táxi:** Melhor para longas distâncias
+• **A pé:** Apenas para distâncias curtas e seguras
+• **Bicicleta:** Cuidado com vento forte
+
+⏰ **TIMING DA EVACUAÇÃO:**
+• **Preventiva:** Ao primeiro aviso INGC
+• **Urgente:** Água no joelho = sair imediatamente
+• **Noturna:** Só com lanterna e em grupo
+
+🎒 **DURANTE O PERCURSO:**
+• Leve apenas o essencial
+• Documentos em saco plástico
+• Mantenha contacto com família
+• Siga sempre instruções das autoridades
+
+📍 **PONTOS DE ENCONTRO TEMPORÁRIOS:**
+• **Escola Secundária da Beira** (Centro) - Grande capacidade
+• **Hospital Central** - Sempre operacional  
+• **Escola Palmeiras** - Zona mais alta
+
+📱 **EM DÚVIDA:** Ligue INGC 119 para orientação específica da sua localização`;
+
+    await whatsappApi.enviarMensagemComIndicador(rotasMessage, phoneNumber);
+
+    await saveOrUpdateAdvancedUser(phoneNumber, {
+      last_interaction_type: 'rotas_evacuacao',
+      preferred_city: 'Beira'
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao processar rotas:', error);
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      '🗺️ **ROTAS BÁSICAS:**\n• Use EN6 (via principal)\n• Evite zonas baixas\n• Dirija-se ao centro (Manga) ou Palmeiras\n• Contacte INGC: 119',
+      phoneNumber
+    );
+  }
+}
+
+async function handleKitEmergenciaInfo(phoneNumber, user) {
+  try {
+    console.log('🎒 Handler: Kit de Emergência');
+
+    await whatsappApi.enviarMensagemRapidaProcessando(phoneNumber, 'Preparando lista essencial');
+
+    const kitInfo = await openaiService.generateEmergencyKitInfo(user);
+
+    if (kitInfo.success) {
+      await whatsappApi.enviarMensagemComIndicador(kitInfo.message, phoneNumber);
+    } else {
+      // Fallback com informações específicas para Moçambique
+      const kitMessage = `🎒 *KIT DE EMERGÊNCIA - BEIRA/MOÇAMBIQUE*
+
+💧 **ÁGUA E COMIDA (3 DIAS POR PESSOA):**
+• 9 litros de água potável (ou pastilhas purificadoras)
+• Arroz, feijão, farinha de milho
+• Conservas (atum, sardinha)
+• Bolachas, biscoitos duráveis
+• Leite em pó (se há crianças)
+
+📋 **DOCUMENTOS ESSENCIAIS:**
+• BI (Bilhete de Identidade)
+• Certidão de nascimento
+• Cartão de vacinação
+• Documentos de propriedade
+• **TUDO em saco plástico resistente**
+
+💊 **MEDICAMENTOS:**
+• Paracetamol, aspirina
+• Medicamentos crônicos pessoais
+• Antidiarreico, sais de reidratação
+• Pensos, desinfetante
+• Termômetro
+
+🔦 **EQUIPAMENTOS:**
+• Lanterna LED + pilhas extras
+• Rádio portátil (para avisos INGC)
+• Carregador portátil (power bank)
+• Fósforos em saco plástico
+• Canivete multiuso
+
+👕 **ROUPAS E PROTEÇÃO:**
+• 2 mudas de roupa por pessoa
+• Roupa de chuva/capulana impermeável
+• Sapatos fechados resistentes
+• Cobertor ou lençol grosso
+• Chapéu ou boné
+
+💰 **DINHEIRO E COMUNICAÇÃO:**
+• Dinheiro em notas pequenas
+• Cartões telefônicos
+• Lista de contactos importante
+• Apito para pedir ajuda
+
+👶 **PARA CRIANÇAS/BEBÊS:**
+• Fraldas (1 semana)
+• Leite em pó, mamadeiras
+• Comida de bebê
+• Brinquedo pequeno (conforto)
+• Medicamentos pediátricos
+
+🔄 **MANUTENÇÃO DO KIT:**
+• Verificar água/comida de 6 em 6 meses
+• Testar lanterna e rádio mensalmente
+• Renovar medicamentos antes do prazo
+• Ensinar família onde está o kit
+
+📍 **ONDE GUARDAR:**
+• Local de fácil acesso
+• Conhecido por toda família  
+• Seco e protegido
+• Próximo à saída principal
+
+⚡ **KIT RÁPIDO (PARA EVACUAÇÃO URGENTE):**
+• Documentos + água + lanterna
+• Medicamentos essenciais + dinheiro
+• 1 muda de roupa + cobertor
+• **Tudo numa mochila resistente**
+
+💡 **DICA BEIRENSE:** Durante época ciclónica (Nov-Abr), mantenha sempre mochila de emergência pronta!`;
+
+      await whatsappApi.enviarMensagemComIndicador(kitMessage, phoneNumber);
+    }
+
+    await saveOrUpdateAdvancedUser(phoneNumber, {
+      last_interaction_type: 'kit_emergencia',
+      preferred_city: user?.preferred_city || 'Beira'
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao processar kit de emergência:', error);
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      '🎒 **ESSENCIAIS:**\n• 3L água/pessoa\n• Comida 3 dias\n• Documentos\n• Medicamentos\n• Lanterna + pilhas\n• Rádio portátil\n\n📱 Mais info: contacte INGC 119',
+      phoneNumber
+    );
+  }
 }
 
 async function handleDangerousZonesRequest(phoneNumber) {

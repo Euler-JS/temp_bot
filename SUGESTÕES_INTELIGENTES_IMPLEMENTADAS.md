@@ -10,7 +10,7 @@
 ### **2. Comando `/sugestoes` Renovado**
 **ANTES:**
 ```
-💡 Eh pá, aqui tens umas sugestões fixes!
+💡 aqui tens umas sugestões fixes!
 
 🎯 Sugestões que podem te interessar:
 1. Como está o tempo hoje
@@ -20,7 +20,7 @@
 
 **AGORA:**
 ```
-💡 Eh pá, aqui tens umas sugestões fixes baseadas no tempo atual!
+💡 aqui tens umas sugestões fixes baseadas no tempo atual!
 
 🌤️ Tempo agora em Beira:
 • Temperatura: 22°C

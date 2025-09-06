@@ -54,7 +54,7 @@ async function testarComandoSugestoes() {
 
     console.log('\n3️⃣ Criando mensagem como seria enviada...');
 
-    let suggestionsMessage = `💡 *Eh pá, aqui tens umas sugestões fixes baseadas no tempo atual!*\n\n`;
+    let suggestionsMessage = `💡 *aqui tens umas sugestões fixes baseadas no tempo atual!*\n\n`;
 
     suggestionsMessage += `🌤️ *Tempo agora em ${weatherData.city}:*\n`;
     suggestionsMessage += `• Temperatura: ${weatherData.temperature}°C\n`;
