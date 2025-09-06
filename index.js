@@ -4138,6 +4138,205 @@ function maskContactForAdmin(contact) {
 }
 
 // ===============================================
+// ROTA INFO - ENVIO EM MASSA PARA USUÁRIOS
+// ===============================================
+
+app.post("/info", async (req, res) => {
+  try {
+    console.log('📢 Rota /info acionada - iniciando envio em massa por cidade');
+
+    const { message, includeWeather = true, adminKey } = req.body;
+
+    // Verificação de segurança (opcional)
+    if (adminKey && adminKey !== process.env.ADMIN_KEY) {
+      return res.status(401).json({
+        success: false,
+        error: 'Chave de administrador inválida'
+      });
+    }
+
+    // Buscar todos os usuários do bot
+    const allUsers = await dbService.getAllUsers();
+
+    if (!allUsers || allUsers.length === 0) {
+      return res.json({
+        success: false,
+        error: 'Nenhum usuário encontrado no sistema'
+      });
+    }
+
+    console.log(`📊 Encontrados ${allUsers.length} usuários para enviar mensagens`);
+
+    // 1. AGRUPAR USUÁRIOS POR CIDADE
+    const usersByCity = {};
+    allUsers.forEach(user => {
+      const city = user.preferred_city || user.last_city || 'Maputo';
+      if (!usersByCity[city]) {
+        usersByCity[city] = [];
+      }
+      usersByCity[city].push(user);
+    });
+
+    const cities = Object.keys(usersByCity);
+    console.log(`🏙️ Processando ${cities.length} cidades: ${cities.join(', ')}`);
+
+    let totalSentCount = 0;
+    let totalErrorCount = 0;
+    const cityResults = [];
+    const userResults = [];
+
+    // 2. PROCESSAR CADA CIDADE SEPARADAMENTE
+    for (const city of cities) {
+      const usersInCity = usersByCity[city];
+      console.log(`\n🌤️ Processando cidade: ${city} (${usersInCity.length} usuários)`);
+
+      let cityWeatherData = null;
+      let cityMessage = message || '📢 Informação da Joana Bot';
+
+      // 3. BUSCAR DADOS METEOROLÓGICOS UMA VEZ POR CIDADE
+      if (includeWeather) {
+        try {
+          console.log(`🔍 Buscando dados meteorológicos para ${city}...`);
+          cityWeatherData = await weatherService.getCurrentWeather(city, 'celsius');
+
+          // Adicionar dados meteorológicos à mensagem
+          cityMessage += `\n\n🌤️ *Tempo atual em ${cityWeatherData.city}:*`;
+          cityMessage += `\n🌡️ Temperatura: ${cityWeatherData.temperature}${cityWeatherData.units}`;
+          cityMessage += `\n💧 Umidade: ${cityWeatherData.humidity}%`;
+          cityMessage += `\n📝 Condições: ${cityWeatherData.description}`;
+
+          if (cityWeatherData.feelsLike) {
+            cityMessage += `\n🌡️ Sensação térmica: ${cityWeatherData.feelsLike}${cityWeatherData.units}`;
+          }
+
+          console.log(`✅ Dados obtidos: ${cityWeatherData.temperature}°C, ${cityWeatherData.description}`);
+
+        } catch (weatherError) {
+          console.log(`⚠️ Erro ao buscar clima para ${city}:`, weatherError.message);
+          cityMessage += `\n\n🌤️ *Localização:* ${city}`;
+          cityMessage += `\n⚠️ Não foi possível obter dados meteorológicos no momento`;
+        }
+      }
+
+      // Adicionar timestamp final
+      cityMessage += `\n\n---\n_Mensagem enviada pela Joana Bot - ${new Date().toLocaleString('pt-BR')}_`;
+
+      // 4. ENVIAR PARA TODOS OS USUÁRIOS DA CIDADE
+      let citySentCount = 0;
+      let cityErrorCount = 0;
+
+      console.log(`📤 Enviando mensagem para ${usersInCity.length} usuários em ${city}...`);
+
+      for (const user of usersInCity) {
+        try {
+          await whatsappApi.enviarMensagemUsandoWhatsappAPI(cityMessage, user.contact);
+
+          citySentCount++;
+          totalSentCount++;
+
+          userResults.push({
+            contact: user.contact.substring(0, 6) + "****",
+            city: city,
+            status: 'sent'
+          });
+
+          console.log(`  ✅ Enviado para usuário ${user.contact.substring(0, 6)}**** em ${city}`);
+
+          // Delay menor já que estamos processando por cidade
+          await new Promise(resolve => setTimeout(resolve, 100));
+
+        } catch (error) {
+          cityErrorCount++;
+          totalErrorCount++;
+
+          userResults.push({
+            contact: user.contact.substring(0, 6) + "****",
+            city: city,
+            status: 'error',
+            error: error.message
+          });
+
+          console.error(`  ❌ Erro ao enviar para ${user.contact}:`, error.message);
+        }
+      }
+
+      // Log do resultado da cidade
+      const citySuccessRate = ((citySentCount / usersInCity.length) * 100).toFixed(1);
+      console.log(`📊 ${city}: ${citySentCount}/${usersInCity.length} enviados (${citySuccessRate}%)`);
+
+      cityResults.push({
+        city: city,
+        totalUsers: usersInCity.length,
+        sentCount: citySentCount,
+        errorCount: cityErrorCount,
+        successRate: citySuccessRate + '%',
+        temperature: cityWeatherData?.temperature || 'N/A',
+        conditions: cityWeatherData?.description || 'N/A'
+      });
+
+      // Delay entre cidades para não sobrecarregar
+      if (cities.length > 1) {
+        console.log(`⏳ Aguardando 2 segundos antes da próxima cidade...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+
+    // 5. LOG FINAL E ESTATÍSTICAS
+    const totalSuccessRate = ((totalSentCount / allUsers.length) * 100).toFixed(1);
+    console.log(`\n📊 ENVIO CONCLUÍDO:`);
+    console.log(`   Total enviados: ${totalSentCount}/${allUsers.length} (${totalSuccessRate}%)`);
+    console.log(`   Erros: ${totalErrorCount}`);
+    console.log(`   Cidades processadas: ${cities.length}`);
+
+    // Salvar log da operação
+    try {
+      if (dbService.saveAdminLog) {
+        await dbService.saveAdminLog('info',
+          `Envio em massa por cidade via /info: ${totalSentCount} sucessos, ${totalErrorCount} erros em ${cities.length} cidades`,
+          'mass_message_by_city',
+          {
+            totalUsers: allUsers.length,
+            sentCount: totalSentCount,
+            errorCount: totalErrorCount,
+            citiesProcessed: cities.length,
+            includeWeather,
+            messageLength: message?.length || 0,
+            cityResults: cityResults
+          }
+        );
+      }
+    } catch (logError) {
+      console.log('⚠️ Erro ao salvar log:', logError.message);
+    }
+
+    // 6. RESPOSTA DA API
+    res.json({
+      success: true,
+      data: {
+        totalUsers: allUsers.length,
+        sentCount: totalSentCount,
+        errorCount: totalErrorCount,
+        successRate: totalSuccessRate + '%',
+        citiesProcessed: cities.length,
+        includeWeather,
+        message: `Mensagem enviada para ${totalSentCount} de ${allUsers.length} usuários em ${cities.length} cidades`,
+        timestamp: new Date().toISOString(),
+        cityBreakdown: cityResults
+      },
+      details: userResults.slice(0, 20) // Mostrar primeiros 20 resultados
+    });
+
+  } catch (error) {
+    console.error('❌ Erro na rota /info:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor',
+      details: error.message
+    });
+  }
+});
+
+// ===============================================
 // INICIALIZAÇÃO DO SERVIDOR
 // ===============================================
 
