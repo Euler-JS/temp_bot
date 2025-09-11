@@ -1,6 +1,8 @@
 require('dotenv').config();
 const axios = require('axios');
 const AIBasedSuggestionsHandler = require('./suggestions_handler_ai');
+// Local Beira locations data
+const { beiraLocations, beiraLocationUtils } = require('../locations_beira/beira_locations');
 
 class OPENAI {
     constructor() {
@@ -462,6 +464,17 @@ Responde só o JSON:
             analysis.intent === 'tipo_de_atividade';
 
         if (city.toLowerCase() === 'beira' && isActivityRequest) {
+            // Gerar sugestões diretamente a partir do banco de locais da Beira
+            const context = {
+                temperatura: temp,
+                condicao: weatherData.description?.toLowerCase(),
+                hora: (new Date()).getHours(),
+                intent: analysis.intent
+            };
+
+            const suggestions = beiraLocationUtils.getSuggestionsByContext(context);
+            const formattedSuggestions = suggestions.map(s => `📍 • ${s.nome} - ${s.descricao}`).join('\n');
+
             return `A pessoa perguntou onde pode ir hoje em Beira. Com ${temp}°C e ${weatherData.description}, quero dar uma resposta completa e estruturada.
 
 FORMATO IDEAL DA RESPOSTA:
@@ -477,10 +490,7 @@ FORMATO IDEAL DA RESPOSTA:
 ${this.getLocationCategoryForTemperature(temp, weatherData.description)}
 
 �️ *Locais específicos da Beira:*
-📍 • Macúti - zona da praia
-📍 • Manga - centro comercial
-📍 • Goto - bairro residencial
-📍 • Munhava - zona movimentada
+${formattedSuggestions}
 
 💬 *Quer saber mais sobre algum local específico?*
 Exemplo: "Como está o Macúti hoje?" ou "Restaurantes no Manga"
