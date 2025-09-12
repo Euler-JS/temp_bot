@@ -216,29 +216,42 @@ async function processAdvancedTextMessage(messageText, phoneNumber, enableAutoDe
     console.log(`🌤️ É pergunta sobre clima? ${isWeatherQuery}`);
 
     if (!isWeatherQuery) {
-      // NÃO é sobre clima - usar resposta amigável em português moçambicano
-      console.log('💬 Pergunta não é sobre clima - usando resposta amigável');
+      // Se a análise não identificou como clima, mas a mensagem contém palavras-chave de clima
+      // e o utilizador tem uma última cidade conhecida, presumir que é sobre clima nessa cidade.
+      const weatherKeywords = ['tempo', 'clima', 'temperatura', 'calor', 'frio', 'chuva', 'sol', 'vento', 'humidade', 'graus'];
+      const lowerMessage = messageText.toLowerCase();
+      const hasWeatherKeywords = weatherKeywords.some(k => lowerMessage.includes(k));
 
-      const friendlyResponse = await openaiService.generateFriendlyMozambicanResponse(
-        messageText,
-        analysis,
-        {
-          queryCount: user?.query_count || 0,
-          lastCity: user?.last_city,
-          expertiseLevel: user?.expertise_level || 'basic'
+      if (hasWeatherKeywords && user?.last_city) {
+        console.log('ℹ️ Mensagem menciona clima e existe last_city; assumindo consulta sobre clima para', user.last_city);
+        // Forçar roteamento climático usando a última cidade conhecida
+        adaptedAnalysis.city = user.last_city;
+        // Continue para o roteamento meteorológico
+      } else {
+        // NÃO é sobre clima - usar resposta amigável em português moçambicano
+        console.log('💬 Pergunta não é sobre clima - usando resposta amigável');
+
+        const friendlyResponse = await openaiService.generateFriendlyMozambicanResponse(
+          messageText,
+          analysis,
+          {
+            queryCount: user?.query_count || 0,
+            lastCity: user?.last_city,
+            expertiseLevel: user?.expertise_level || 'basic'
+          }
+        );
+
+        if (friendlyResponse.success) {
+          await whatsappApi.enviarMensagemUsandoWhatsappAPI(friendlyResponse.message, phoneNumber);
+
+          // Atualizar contador de consultas
+          await saveOrUpdateAdvancedUser(phoneNumber, {
+            query_count: (user?.query_count || 0) + 1,
+            last_interaction_type: 'general_friendly'
+          });
+
+          return friendlyResponse.message;
         }
-      );
-
-      if (friendlyResponse.success) {
-        await whatsappApi.enviarMensagemUsandoWhatsappAPI(friendlyResponse.message, phoneNumber);
-
-        // Atualizar contador de consultas
-        await saveOrUpdateAdvancedUser(phoneNumber, {
-          query_count: (user?.query_count || 0) + 1,
-          last_interaction_type: 'general_friendly'
-        });
-
-        return friendlyResponse.message;
       }
     }
 

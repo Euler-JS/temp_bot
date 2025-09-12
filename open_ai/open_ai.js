@@ -473,7 +473,52 @@ Responde só o JSON:
             };
 
             const suggestions = beiraLocationUtils.getSuggestionsByContext(context);
-            const formattedSuggestions = suggestions.map(s => `📍 • ${s.nome} - ${s.descricao}`).join('\n');
+            const formattedSuggestions = suggestions.map(s => `📍 • ${s.nome} - ${s.descricao || ''}`).join('\n');
+
+            // Construir listas por categoria: caminhadas, cafés ao ar livre, museus, parques
+            const uniqueByName = (items) => {
+                const seen = new Set();
+                return items.filter(i => {
+                    if (!i || !i.nome) return false;
+                    if (seen.has(i.nome)) return false;
+                    seen.add(i.nome);
+                    return true;
+                });
+            };
+
+            const takeNames = (items, max = 3) => {
+                if (!items || items.length === 0) return ['Nenhum local listado'];
+                return uniqueByName(items).slice(0, max).map(i => `• ${i.nome} — ${i.descricao || ''}`);
+            };
+
+            // Caminhadas: praias e parques/áreas verdes
+            const walksCandidates = [
+                ...(beiraLocations.praias || []),
+                ...(beiraLocationUtils.getByType('lazer', 'urbano') || []),
+                ...(beiraLocationUtils.getByType('lazer', 'natureza') || []),
+            ];
+            const walksList = takeNames(walksCandidates, 4);
+
+            // Cafés ao ar livre / esplanadas: restaurantes com vista ou padarias/cafés conhecidos
+            const outdoorCafeCandidates = (beiraLocations.restaurantes || []).filter(r =>
+                (r.vista && r.vista.toLowerCase().includes('praia')) ||
+                (r.especialidade && r.especialidade === 'padaria') ||
+                (r.nome && /bolos|café|cafe|padaria/i.test(r.nome))
+            );
+            const outdoorCafeList = takeNames(outdoorCafeCandidates.length ? outdoorCafeCandidates : beiraLocations.restaurantes, 4);
+
+            // Museus / locais culturais: historicos + lazer do tipo cultural
+            const museumCandidates = [
+                ...(beiraLocations.historicos || []),
+                ...(beiraLocationUtils.getByType('lazer', 'cultural') || [])
+            ];
+            const museumList = takeNames(museumCandidates, 4);
+
+            // Parques para relaxar: lazer com 'Parque' ou tipo urbano/natureza
+            const parksCandidates = (beiraLocations.lazer || []).filter(l => /parque|parque de/i.test(l.nome) || ['urbano', 'natureza'].includes(l.tipo));
+            const parksList = takeNames(parksCandidates.length ? parksCandidates : beiraLocations.lazer, 4);
+
+            const formattedCategorySections = `\n\n🚶 *Caminhadas e passeios:*\n${walksList.join('\n')}\n\n☕ *Cafés / esplanadas ao ar livre:*\n${outdoorCafeList.join('\n')}\n\n🏛️ *Museus / Locais culturais:*\n${museumList.join('\n')}\n\n🌳 *Parques para relaxar:*\n${parksList.join('\n')}`;
 
             return `A pessoa perguntou onde pode ir hoje em Beira. Com ${temp}°C e ${weatherData.description}, quero dar uma resposta completa e estruturada.
 
@@ -488,6 +533,8 @@ FORMATO IDEAL DA RESPOSTA:
 [Depois escolher uma das categorias baseada na temperatura]:
 
 ${this.getLocationCategoryForTemperature(temp, weatherData.description)}
+
+${formattedCategorySections}
 
 �️ *Locais específicos da Beira:*
 ${formattedSuggestions}
