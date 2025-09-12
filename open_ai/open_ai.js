@@ -210,7 +210,7 @@ Esta pergunta NÃO é sobre clima/tempo, então quero dar uma resposta amigável
 
 INSTRUÇÕES:
 - Identifica-te como Joana Bot quando apropriado (especialmente em primeiras interações)
-- Usa linguagem moçambicana natural ("Eh pá", "fixes", "eish", etc.)
+- Usa linguagem moçambicana natural (" ", "fixes", "eish", etc.)
 - Seja útil e amigável
 - Se não souber sobre o tópico, admite honestly mas oferece ajuda meteorológica
 - Máximo 150 palavras
@@ -219,7 +219,7 @@ INSTRUÇÕES:
 - Sempre oferece ajuda meteorológica como alternativa
 
 EXEMPLOS:
-- Se disser "Olá" → "Eh pá, olá! Sou a Joana Bot, a tua assistente meteorológica! Como posso ajudar-te com o tempo hoje?"
+- Se disser "Olá" → " olá! Sou a Joana Bot, a tua assistente meteorológica! Como posso ajudar-te com o tempo hoje?"
 - Se perguntar sobre comida → "Eish, sobre restaurantes não sei muito, mas posso ajudar-te a saber o clima para decidir onde comer!"
 - Se for primeira conversa → Inclui breve apresentação da Joana Bot
 
@@ -339,7 +339,7 @@ Estou aqui para te ajudar! 🇲🇿`;
         const userLevel = (context && (context.expertiseLevel || context.expertise_level || context.preferred_complexity)) ?
             (context.expertiseLevel || context.expertise_level || context.preferred_complexity) : 'basic';
 
-        return `Eh pá, sou um assistente que entende bem como os moçambicanos falam sobre o tempo.
+        return ` sou um assistente que entende bem como os moçambicanos falam sobre o tempo.
 
 A pessoa escreveu: "${message}"
 
@@ -582,7 +582,7 @@ Minha resposta natural sobre o clima (mencionando locais reais se relevante):`;
 
         } else {
             // Para outras cidades (comportamento original)
-            return `Eh pá, vou te ajudar com informações fixes sobre ${city}!
+            return ` vou te ajudar com informações fixes sobre ${city}!
 NÍVEL DO USUÁRIO: ${userLevel}
 
 PERGUNTA: ${analysis.intent}
@@ -622,7 +622,7 @@ Minha resposta:`;
 
             default: // basic
                 return `- RESPOSTA SIMPLES: Use linguagem muito fácil e acessível
-- Linguagem moçambicana casual, gírias OK ("Eh pá", "mano", etc.)
+- Linguagem moçambicana casual, gírias OK (" ", "mano", etc.)
 - Evite termos técnicos complexos
 - Foque no prático e útil`;
         }
@@ -1683,7 +1683,7 @@ Focar em ações práticas baseadas no tipo de alerta detectado.`;
         const condition = weatherData.description || 'tempo normal';
         const humidity = weatherData.humidity || 60;
 
-        return `Eh pá, preciso dar 3 sugestões fixes para alguém que está em ${city}.
+        return ` preciso dar 3 sugestões fixes para alguém que está em ${city}.
 
 O tempo agora está assim:
 - ${temp}°C (${temp > 30 ? 'eish, quente!' : temp < 18 ? 'está frio' : 'não está mau'})
@@ -1835,7 +1835,7 @@ SOBRE A PESSOA:
 - Última cidade: ${userContext.lastCity || 'primeira vez'}
 
 INSTRUÇÕES PARA DAR DICAS NATURAIS COMO JOANA BOT:
-1. Usa português moçambicano casual ("Eh pá", "fixes", "eish", "meu", etc.)
+1. Usa português moçambicano casual (" ", "fixes", "eish", "meu", etc.)
 2. Seja muito natural e conversacional - como se fosses um amigo
 3. NÃO uses listas rígidas com bullets (•)
 4. NÃO faças formatação muito estruturada
@@ -1846,14 +1846,14 @@ INSTRUÇÕES PARA DAR DICAS NATURAIS COMO JOANA BOT:
 9. Como Joana Bot, mostra conhecimento especializado em meteorologia moçambicana
 
 EXEMPLOS DE RESPOSTAS NATURAIS:
-- Em vez de "• Roupa leve" → "Eh pá, com este calor veste roupa bem leve"
+- Em vez de "• Roupa leve" → " com este calor veste roupa bem leve"
 - Em vez de "• Protetor solar" → "e não te esqueças do protetor solar que o sol está bravo"
 - Em vez de listas → Frases corridas e naturais
 
 ${this.getTipsGuidanceByIntent(analysis.intent, temp, condition)}
 
 FORMATO:
-Começa com algo como "💡 Eh pá..." e depois dá as dicas de forma muito natural, como numa conversa entre amigos experientes.
+Começa com algo como "💡  ..." e depois dá as dicas de forma muito natural, como numa conversa entre amigos experientes.
 
 Minha resposta natural:`;
     } getTipsGuidanceByIntent(intent, temperature, condition) {
@@ -1933,7 +1933,7 @@ SOBRE A PESSOA:
 - Cidade preferida: ${userContext.preferredCity || 'não definida'}
 
 INSTRUÇÕES PARA SUGESTÕES CONVERSACIONAIS COMO JOANA BOT:
-1. Usa português moçambicano natural ("Eh pá", "fixes", "eish", "meu", etc.)
+1. Usa português moçambicano natural (" ", "fixes", "eish", "meu", etc.)
 2. Seja muito conversacional e amigável como Joana Bot
 3. NÃO faças listas numeradas (1. 2. 3.)
 4. NÃO uses bullets estruturados (•)
@@ -1945,7 +1945,7 @@ INSTRUÇÕES PARA SUGESTÕES CONVERSACIONAIS COMO JOANA BOT:
 10. Mostra conhecimento especializado meteorológico da Joana Bot
 
 EXEMPLOS DE LINGUAGEM NATURAL:
-- Em vez de "1. Que roupa usar" → "Eh pá, com este tempo podes pensar na roupa que vais vestir"
+- Em vez de "1. Que roupa usar" → " com este tempo podes pensar na roupa que vais vestir"
 - Em vez de "2. Atividades" → "e também que tal pensar no que fazer hoje"
 - Em vez de listas → Texto corrido e natural
 
@@ -2098,7 +2098,7 @@ Meus conselhos de segurança:`;
         const city = weatherData.city;
         const isRaining = weatherData.description.toLowerCase().includes('chuva');
 
-        let advice = `⚠️ Eh pá, deixa eu te dar uns conselhos importantes sobre o tempo em ${city}! `;
+        let advice = `⚠️  deixa eu te dar uns conselhos importantes sobre o tempo em ${city}! `;
 
         if (isRaining) {
             advice += `Com chuva tens que ter muito cuidado porque o chão fica escorregadio e podes cair. Também evita mexer em aparelhos eléctricos com as mãos molhadas. `;

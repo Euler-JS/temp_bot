@@ -379,7 +379,7 @@ async function handleSuggestionsCommand(phoneNumber, user) {
   try {
     console.log(`💡 Comando /sugestoes acionado para ${phoneNumber}`);
 
-    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Eh pá, deixa eu ver umas sugestões fixes para ti');
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, ' deixa eu ver umas sugestões fixes para ti');
 
     // Criar contexto para as sugestões baseado no usuário
     const userContext = {
@@ -425,7 +425,7 @@ async function handleSuggestionsCommand(phoneNumber, user) {
     } else {
       // Fallback natural caso a AI falhe
       const temp = parseInt(weatherData.temperature);
-      finalMessage = `💡 Eh pá, com ${temp}°C em ${weatherData.city} hoje, `;
+      finalMessage = `💡  com ${temp}°C em ${weatherData.city} hoje, `;
 
       if (temp > 30) {
         finalMessage += `está bem quente! Podes pensar em ir para locais frescos, beber muitos líquidos, e vestir roupa leve. A praia seria fixe! `;
@@ -461,7 +461,7 @@ async function handleSuggestionsCommand(phoneNumber, user) {
   } catch (error) {
     console.error('❌ Erro ao processar comando /sugestoes:', error);
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      '❌ *Eh pá, algo deu errado!*\n\nTenta novamente em uns minutos.',
+      '❌ * algo deu errado!*\n\nTenta novamente em uns minutos.',
       phoneNumber
     );
   }
@@ -552,7 +552,7 @@ async function handleSafetyAdviceCommand(phoneNumber, user) {
   try {
     console.log(`⚠️ Comando /conselhos (segurança) acionado para ${phoneNumber}`);
 
-    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Eh pá, deixa eu ver que conselhos de segurança posso dar sobre o tempo...');
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, ' deixa eu ver que conselhos de segurança posso dar sobre o tempo...');
 
     // Criar contexto para os conselhos baseado no usuário
     const userContext = {
@@ -595,7 +595,7 @@ async function handleSafetyAdviceCommand(phoneNumber, user) {
     } else {
       // Fallback natural caso a AI falhe
       const temp = parseInt(weatherData.temperature);
-      finalMessage = `⚠️ Eh pá, com ${temp}°C em ${weatherData.city}, `;
+      finalMessage = `⚠️  com ${temp}°C em ${weatherData.city}, `;
 
       if (temp > 32) {
         finalMessage += `está muito perigoso! O calor pode causar desidratação e insolação. Bebe muita água mesmo que não tenhas sede, procura sombra e evita o sol forte. Se sentires tontura ou náusea, pede ajuda imediatamente! `;
@@ -646,7 +646,7 @@ async function handleSafetyAdviceCommand(phoneNumber, user) {
   } catch (error) {
     console.error('❌ Erro ao processar comando /conselhos:', error);
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      "❌ Eh pá, não consegui gerar os conselhos agora. Tenta mais tarde!",
+      "❌  não consegui gerar os conselhos agora. Tenta mais tarde!",
       phoneNumber
     );
     return null;
@@ -660,7 +660,7 @@ async function handleSafetyAdvice(analysis, phoneNumber, user) {
 
     if (!targetCity) {
       await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-        "🏙️ Eh pá, para dar conselhos de segurança preciso saber a cidade. Qual cidade te interessa?",
+        "🏙️  para dar conselhos de segurança preciso saber a cidade. Qual cidade te interessa?",
         phoneNumber
       );
       return null;
@@ -856,7 +856,7 @@ async function handleSafeZonesCommand(phoneNumber, user) {
   } catch (error) {
     console.error('❌ Erro ao processar comando /zonas_seguras:', error);
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      "❌ Eh pá, não consegui carregar as informações das zonas seguras agora. Tenta mais tarde!",
+      "❌  não consegui carregar as informações das zonas seguras agora. Tenta mais tarde!",
       phoneNumber
     );
     return null;
@@ -932,7 +932,7 @@ async function handleWeatherAlertsCommand(phoneNumber, user) {
   } catch (error) {
     console.error('❌ Erro ao processar comando /alertas:', error);
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      "❌ Eh pá, não consegui verificar os alertas agora. Para emergências ligue 119 (INGC).",
+      "❌  não consegui verificar os alertas agora. Para emergências ligue 119 (INGC).",
       phoneNumber
     );
     return null;
@@ -976,7 +976,7 @@ async function handleAdvancedWeatherData(analysis, phoneNumber, user) {
 
     if (!targetCity) {
       await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-        "🏙️ Eh pá, para ver o tempo preciso saber a cidade. Qual cidade te interessa?",
+        "🏙️  para ver o tempo preciso saber a cidade. Qual cidade te interessa?",
         phoneNumber
       );
       return null;
@@ -1196,7 +1196,7 @@ Máximo ${expertiseLevel === 'basic' ? '150' : expertiseLevel === 'intermediate'
   } catch (error) {
     console.error('❌ Erro em educação avançada:', error);
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      "📚 Eh pá, não consegui preparar a explicação agora. Tenta reformular a tua pergunta.",
+      "📚  não consegui preparar a explicação agora. Tenta reformular a tua pergunta.",
       phoneNumber
     );
     return null;
@@ -1206,7 +1206,7 @@ Máximo ${expertiseLevel === 'basic' ? '150' : expertiseLevel === 'intermediate'
 async function handleWeeklyForecast(city, phoneNumber, user) {
   try {
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      `📅 Eh pá, deixa ver como vai estar toda a semana em ${city}...`,
+      `📅  deixa ver como vai estar toda a semana em ${city}...`,
       phoneNumber
     );
 
@@ -1281,7 +1281,7 @@ async function handlePracticalTips(analysis, phoneNumber, user) {
 
     if (!targetCity) {
       await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-        "🏙️ Eh pá, para dar dicas fixes preciso saber a cidade. Qual cidade te interessa?",
+        "🏙️  para dar dicas fixes preciso saber a cidade. Qual cidade te interessa?",
         phoneNumber
       );
       return null;
@@ -1290,7 +1290,7 @@ async function handlePracticalTips(analysis, phoneNumber, user) {
     // Buscar dados atuais do clima
     const weatherData = await weatherService.getCurrentWeather(targetCity, user?.units || 'celsius');
 
-    await whatsappApi.enviarMensagemCarregamento(phoneNumber, `Eh pá, deixa eu ver umas dicas fixes para ti sobre ${targetCity}...`);
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, ` deixa eu ver umas dicas fixes para ti sobre ${targetCity}...`);
 
     // Usar AI para gerar dicas naturais em português moçambicano
     const tipsResponse = await openaiService.generatePracticalTips(
@@ -1979,7 +1979,7 @@ Para ajustar configurações, digite "configurar alertas".
 }
 
 async function handleOffTopicAdvanced(analysis, phoneNumber, user) {
-  const offTopicMessage = `🤖 Eh pá, sou especialista em tempo e meteorologia! 
+  const offTopicMessage = `🤖  sou especialista em tempo e meteorologia! 
 
 🌤️ *Posso ajudar-te com:*
 • Temperatura actual de qualquer cidade
@@ -2139,7 +2139,7 @@ function getPersonalizedBody(weatherData, city) {
   const temp = weatherData?.temperature;
 
   if (!temp) {
-    return `Eh pá, aqui tens umas sugestões fixes para ${city}:`;
+    return ` aqui tens umas sugestões fixes para ${city}:`;
   }
 
   if (temp > 32) {
@@ -2172,7 +2172,7 @@ async function sendIntelligentSuggestionsLegacy(phoneNumber, suggestions, city) 
           text: "💡 Umas sugestões fixes"
         },
         body: {
-          text: "Eh pá, com base no que perguntaste, talvez te interesse:"
+          text: " com base no que perguntaste, talvez te interesse:"
         },
         action: {
           buttons: suggestions.slice(0, 3).map((suggestion, index) => {
@@ -2546,7 +2546,7 @@ async function handleForecastRequest(phoneNumber, days = 7) {
       ? `🔍 Analisando dados meteorológicos de ${days} dias para ${city}...`
       : userLevel === 'intermediate'
         ? `🔍 Preparando previsão detalhada de ${days} dias para ${city}...`
-        : `🔍 Eh pá, deixa ver a previsão de ${days} dias para ${city}...`;
+        : `🔍  deixa ver a previsão de ${days} dias para ${city}...`;
 
     await whatsappApi.enviarMensagemCarregamento(phoneNumber, loadingMessage);
 
@@ -2571,7 +2571,7 @@ async function handleForecastRequest(phoneNumber, days = 7) {
         ? `❌ Não foi possível obter os dados meteorológicos para ${city}. Verifique a denominação da localidade e tente novamente.`
         : userLevel === 'intermediate'
           ? `❌ Não consegui obter a previsão para ${city}. Verifica o nome da cidade e tenta novamente.`
-          : `❌ Eh pá, não consegui obter a previsão para ${city}. Verifica se o nome da cidade está correto e tenta novamente.`;
+          : `❌  não consegui obter a previsão para ${city}. Verifica se o nome da cidade está correto e tenta novamente.`;
 
       await whatsappApi.enviarMensagemUsandoWhatsappAPI(errorMessage, phoneNumber);
     }
@@ -2585,7 +2585,7 @@ async function handleForecastRequest(phoneNumber, days = 7) {
 
     const errorMessage = userLevel === 'advanced'
       ? "❌ Erro no sistema meteorológico. Favor tentar novamente."
-      : "❌ Eh pá, algo deu errado. Tenta mais tarde.";
+      : "❌  algo deu errado. Tenta mais tarde.";
 
     await whatsappApi.enviarMensagemErro(phoneNumber, errorMessage);
   }
@@ -2707,7 +2707,7 @@ async function handleClothingAdviceRequest(phoneNumber) {
     const user = await getUserByContact(phoneNumber);
     const city = user?.preferred_city || user?.last_city || 'Maputo';
 
-    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Eh pá, deixa ver que roupa é melhor para hoje...');
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, ' deixa ver que roupa é melhor para hoje...');
 
     const weatherData = await weatherService.getCurrentWeather(city);
     const temp = parseInt(weatherData.temperature);
@@ -2778,7 +2778,7 @@ async function handleActivitySuggestionsRequest(phoneNumber) {
       await whatsappApi.enviarMensagemUsandoWhatsappAPI(suggestions.message, phoneNumber);
     } else {
       await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-        '❌ Eh pá, não consegui gerar sugestões agora. Tenta mais tarde.',
+        '❌  não consegui gerar sugestões agora. Tenta mais tarde.',
         phoneNumber
       );
     }
@@ -2960,7 +2960,7 @@ async function handleHealthCareAdviceRequest(phoneNumber) {
     const user = await getUserByContact(phoneNumber);
     const city = user?.preferred_city || user?.last_city || 'Maputo';
 
-    await whatsappApi.enviarMensagemCarregamento(phoneNumber, 'Eh pá, deixa ver que cuidados de saúde são importantes com este tempo...');
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, ' deixa ver que cuidados de saúde são importantes com este tempo...');
 
     const weatherData = await weatherService.getCurrentWeather(city);
 
@@ -3151,7 +3151,7 @@ async function handleDynamicAdviceRequest(phoneNumber, listId, listTitle) {
     const user = await getUserByContact(phoneNumber);
     const city = user?.preferred_city || user?.last_city || 'Maputo';
 
-    await whatsappApi.enviarMensagemCarregamento(phoneNumber, `Eh pá, deixa ver mais sobre "${listTitle}"...`);
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, ` deixa ver mais sobre "${listTitle}"...`);
 
     const weatherData = await weatherService.getCurrentWeather(city);
 
@@ -3210,7 +3210,7 @@ function getContextualLoadingMessage(context, city) {
   const { timeframe, weatherAspect } = context || {};
 
   if (timeframe === 'amanha') return `🔍 Deixa ver como vai estar amanhã em ${city}...`;
-  if (weatherAspect === 'chuva') return `☔ Eh pá, vou ver se vai chover em ${city}...`;
+  if (weatherAspect === 'chuva') return `☔  vou ver se vai chover em ${city}...`;
   if (weatherAspect === 'temperatura') return `🌡️ Vou verificar a temperatura actual em ${city}...`;
 
   return `🔍 Deixa eu ver como está o tempo em ${city}...`;
@@ -3258,7 +3258,7 @@ async function processBasicFallback(messageText, phoneNumber) {
   console.log('🔄 Usando fallback básico para:', messageText);
 
   await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-    "🤖 Eh pá, não consegui entender bem a tua mensagem.\n\n💬 Podes tentar assim:\n• 'Clima em [cidade]'\n• 'Previsão para amanhã'\n• 'O que é [termo meteorológico]?'\n\nComo é que te posso ajudar?",
+    "🤖  não consegui entender bem a tua mensagem.\n\n💬 Podes tentar assim:\n• 'Clima em [cidade]'\n• 'Previsão para amanhã'\n• 'O que é [termo meteorológico]?'\n\nComo é que te posso ajudar?",
     phoneNumber
   );
 }
@@ -3267,7 +3267,7 @@ async function sendAdvancedHelp(phoneNumber, user) {
   const language = user?.language || 'pt';
   const expertiseLevel = user?.expertise_level || 'basic';
 
-  let helpMessage = `🤖 *Eh pá, sou o teu assistente do tempo!*\n\n`;
+  let helpMessage = `🤖 * sou o teu assistente do tempo!*\n\n`;
 
   helpMessage += `⭐ *COMANDOS ESPECIAIS:*\n`;
   helpMessage += `• \`/sugestoes\` - Vou dar-te umas sugestões fixes\n`;
@@ -3978,7 +3978,7 @@ function generateClothingTips(weatherData) {
   let tips = `👕 *Como te vestir hoje:*\n\n`;
 
   if (temp > 30) {
-    tips += `🌡️ Faz ${temp}°C - eh pá, está quente mesmo!\n`;
+    tips += `🌡️ Faz ${temp}°C -  está quente mesmo!\n`;
     tips += `• Roupa leve e clara\n`;
     tips += `• Tecidos frescos (algodão é fixe)\n`;
     tips += `• Chapéu ou boné para proteger\n`;
@@ -4289,7 +4289,7 @@ function generateNaturalFallbackTips(weatherData, city, originalMessage) {
   const isRaining = weatherData.description.toLowerCase().includes('chuva');
   const message = (originalMessage || '').toLowerCase();
 
-  let response = `💡 *Eh pá, aqui tens umas dicas fixes para ${city}!*\n\n`;
+  let response = `💡 * aqui tens umas dicas fixes para ${city}!*\n\n`;
 
   response += `🌤️ *Como está agora:* ${temp}°C - ${weatherData.description}\n\n`;
 
@@ -4381,7 +4381,7 @@ async function handleTomorrowForecastCommand(phoneNumber, user) {
 
     if (!forecast || !forecast.forecasts || forecast.forecasts.length < 2) {
       await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-        `❌ Eh pá, não consegui obter a previsão para amanhã em ${targetCity}. Tenta mais tarde.`,
+        `❌  não consegui obter a previsão para amanhã em ${targetCity}. Tenta mais tarde.`,
         phoneNumber
       );
       return null;
@@ -4525,7 +4525,7 @@ Máximo ${userLevel === 'basic' ? '250' : userLevel === 'intermediate' ? '350' :
   } catch (error) {
     console.error('❌ Erro ao processar comando /amanha:', error);
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      "❌ Eh pá, não consegui ver a previsão para amanhã agora. Tenta mais tarde!",
+      "❌  não consegui ver a previsão para amanhã agora. Tenta mais tarde!",
       phoneNumber
     );
     return null;
@@ -4549,7 +4549,7 @@ async function handleProximosDiasCommand(phoneNumber, user) {
   } catch (error) {
     console.error('❌ Erro ao processar comando /proximos_dias:', error);
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-      "❌ Eh pá, não consegui ver a previsão dos próximos dias agora. Tenta mais tarde!",
+      "❌  não consegui ver a previsão dos próximos dias agora. Tenta mais tarde!",
       phoneNumber
     );
     return null;

@@ -129,7 +129,7 @@ module.exports = {
     // Padrões de linguagem moçambicana
     languagePatterns: {
         casual: {
-            greetings: ["Como está?", "Eh pá", "Fixe"],
+            greetings: ["Como está?", " ", "Fixe"],
             questions: ["Vai chover?", "Como vai estar?", "Que tal?"],
             exclamations: ["Que calor!", "Que frio!", "Que chuva!"]
         },

@@ -10,7 +10,7 @@
 ### **2. Comando `/sugestoes` Renovado**
 **ANTES:**
 ```
-💡 Eh pá, aqui tens umas sugestões fixes!
+💡  aqui tens umas sugestões fixes!
 
 🎯 Sugestões que podem te interessar:
 1. Como está o tempo hoje
@@ -20,7 +20,7 @@
 
 **AGORA:**
 ```
-💡 Eh pá, aqui tens umas sugestões fixes baseadas no tempo atual!
+💡  aqui tens umas sugestões fixes baseadas no tempo atual!
 
 🌤️ Tempo agora em Beira:
 • Temperatura: 22°C
@@ -41,7 +41,7 @@
 2. **Obter dados reais** → Temperatura, humidade, condições atuais
 3. **AI analisa contexto** → Temperatura + perfil do usuário
 4. **Gerar sugestões** → Específicas para as condições atuais
-5. **Português moçambicano** → "Eh pá", "fixes", linguagem local
+5. **Português moçambicano** → " ", "fixes", linguagem local
 
 ### **4. Método AI Criado**
 ```javascript
@@ -103,7 +103,7 @@ async generateTemperatureBasedSuggestions(weatherData, userContext) {
 ## 🇲🇿 Português Moçambicano
 
 ### **Expressões Usadas:**
-- "Eh pá" - expressão típica moçambicana
+- " " - expressão típica moçambicana
 - "fixes" - gíria para "boas/ótimas"
 - "tás a começar" - "estás a começar"
 - "Como andas por aí" - cumprimento casual

@@ -49,7 +49,7 @@ async function handleForecastRequest(phoneNumber, days = 7) {
         const user = await getUserByContact(phoneNumber);
         const city = user?.preferred_city || user?.last_city || 'Beira'; // Mudei para Beira
 
-        await mockWhatsappApi.enviarMensagemCarregamento(phoneNumber, `🔍 Eh pá, deixa ver a previsão de ${days} dias para ${city}...`);
+        await mockWhatsappApi.enviarMensagemCarregamento(phoneNumber, `🔍  deixa ver a previsão de ${days} dias para ${city}...`);
 
         const weatherService = new WeatherService();
         const forecastData = await weatherService.getWeatherForecast(city, days);
@@ -90,7 +90,7 @@ async function handleForecastRequest(phoneNumber, days = 7) {
 
         } else {
             await mockWhatsappApi.enviarMensagemUsandoWhatsappAPI(
-                `❌ Eh pá, não consegui obter a previsão para ${city}. Verifica se o nome da cidade está correto e tenta novamente.`,
+                `❌  não consegui obter a previsão para ${city}. Verifica se o nome da cidade está correto e tenta novamente.`,
                 phoneNumber
             );
 

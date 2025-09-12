@@ -51,7 +51,7 @@ async function testAdvancedUser() {
             console.log(response.message);
 
             // Verificar se a resposta usa tom formal/técnico (advanced)
-            const isFormal = !response.message.includes('Eh pá') &&
+            const isFormal = !response.message.includes(' ') &&
                 !response.message.includes('mano') &&
                 !response.message.includes('fixes');
 
@@ -68,7 +68,7 @@ async function testAdvancedUser() {
             if (!isFormal) {
                 console.log('❌ PROBLEMA: Resposta ainda usa tom casual para usuário advanced!');
                 console.log('🔍 Gírias encontradas:',
-                    response.message.match(/(eh pá|mano|fixes|eish)/gi) || 'nenhuma');
+                    response.message.match(/( |mano|fixes|eish)/gi) || 'nenhuma');
             }
         } else {
             console.log('❌ Erro na resposta:', response.message);

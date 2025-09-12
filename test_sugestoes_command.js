@@ -54,7 +54,7 @@ async function testarComandoSugestoes() {
 
     console.log('\n3️⃣ Criando mensagem como seria enviada...');
 
-    let suggestionsMessage = `💡 *Eh pá, aqui tens umas sugestões fixes baseadas no tempo atual!*\n\n`;
+    let suggestionsMessage = `💡 * aqui tens umas sugestões fixes baseadas no tempo atual!*\n\n`;
 
     suggestionsMessage += `🌤️ *Tempo agora em ${weatherData.city}:*\n`;
     suggestionsMessage += `• Temperatura: ${weatherData.temperature}°C\n`;
@@ -103,7 +103,7 @@ async function testarComandoSugestoes() {
     }
 
     suggestionsMessage += `\n💬 *Como usar:* É só escrever qualquer uma das sugestões aí em cima, ou pergunta o que quiseres.\n`;
-    suggestionsMessage += `\n🔄 *Eh pá:* Quanto mais usares o bot, mais ele aprende contigo e as sugestões ficam melhores!`;
+    suggestionsMessage += `\n🔄 * :* Quanto mais usares o bot, mais ele aprende contigo e as sugestões ficam melhores!`;
 
     console.log('\n📱 MENSAGEM FINAL SERIA:');
     console.log('=' * 50);

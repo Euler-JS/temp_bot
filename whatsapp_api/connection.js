@@ -911,7 +911,7 @@ class WhatsAppApi {
                     text: "🤔 O que te interessa?"
                 },
                 body: {
-                    text: `Eh pá, baseado no tempo atual em ${city} (${temp}°C), aqui tens algumas coisas interessantes que podes descobrir:`
+                    text: ` baseado no tempo atual em ${city} (${temp}°C), aqui tens algumas coisas interessantes que podes descobrir:`
                 },
                 footer: {
                     text: "Joana Bot - Sempre aqui para ajudar! 🌤️"
@@ -962,7 +962,7 @@ class WhatsAppApi {
                     text: "🤔 Outros conselhos?"
                 },
                 body: {
-                    text: `Eh pá, com ${temp}°C em ${city}, aqui tens mais alguns conselhos que podem ser úteis:`
+                    text: ` com ${temp}°C em ${city}, aqui tens mais alguns conselhos que podem ser úteis:`
                 },
                 footer: {
                     text: "Joana Bot - Sempre com bons conselhos! 💡"

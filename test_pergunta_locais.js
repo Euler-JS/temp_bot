@@ -101,7 +101,7 @@ function generateIdealResponse(weatherData) {
     const condition = weatherData.description.toLowerCase();
     const isRaining = condition.includes('chuva') || condition.includes('rain');
 
-    let response = `🗺️ *Eh pá, vou te dar umas ideias fixes de locais para ires hoje em Beira!*\n\n`;
+    let response = `🗺️ * vou te dar umas ideias fixes de locais para ires hoje em Beira!*\n\n`;
 
     response += `🌤️ *Como está o tempo:*\n`;
     response += `• ${temp}°C - ${weatherData.description}\n`;

@@ -39,7 +39,7 @@ async function testarMensagemUnificada() {
     console.log('\n3️⃣ Criando mensagem unificada...');
 
     // Reproduzir exatamente a lógica do handleSuggestionsCommand
-    let suggestionsMessage = `💡 *Eh pá, aqui tens umas sugestões fixes baseadas no tempo atual!*\n\n`;
+    let suggestionsMessage = `💡 * aqui tens umas sugestões fixes baseadas no tempo atual!*\n\n`;
 
     suggestionsMessage += `🌤️ *Tempo agora em ${weatherData.city}:*\n`;
     suggestionsMessage += `• Temperatura: ${weatherData.temperature}°C\n`;
@@ -72,7 +72,7 @@ async function testarMensagemUnificada() {
     suggestionsMessage += `• Ou escreve a sugestão completa\n`;
     suggestionsMessage += `• Ou faz qualquer pergunta sobre o tempo\n\n`;
     suggestionsMessage += `📱 *Exemplos:* "1" ou "passeio pela cidade" ou "como está o tempo?"\n\n`;
-    suggestionsMessage += `🔄 *Eh pá:* Quanto mais usares o bot, mais ele aprende contigo e as sugestões ficam melhores!`;
+    suggestionsMessage += `🔄 * :* Quanto mais usares o bot, mais ele aprende contigo e as sugestões ficam melhores!`;
 
     console.log('\n📱 MENSAGEM UNIFICADA FINAL:');
     console.log('═'.repeat(60));

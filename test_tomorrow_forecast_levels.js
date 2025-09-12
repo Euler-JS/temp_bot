@@ -20,7 +20,7 @@ async function testTomorrowForecastLevels() {
 - Balance entre informal e informativo`;
                 default: // basic
                     return `- RESPOSTA SIMPLES: Use linguagem muito fácil e acessível
-- Linguagem moçambicana casual, gírias OK ("Eh pá", "mano", etc.)
+- Linguagem moçambicana casual, gírias OK (" ", "mano", etc.)
 - Evite termos técnicos complexos
 - Foque no prático e útil`;
             }
@@ -87,12 +87,12 @@ Máximo ${userLevel === 'basic' ? '250' : userLevel === 'intermediate' ? '350' :
             console.log(response);
 
             // Análise da resposta
-            const isBasic = response.includes('Eh pá') || response.includes('mano') || response.includes('fixes');
+            const isBasic = response.includes(' ') || response.includes('mano') || response.includes('fixes');
             const isTechnical = response.includes('amplitude térmica') ||
                 response.includes('probabilidade de precipitação') ||
                 response.includes('meteorológica') ||
                 response.includes('atmosférica');
-            const isFormal = !response.includes('Eh pá') && !response.includes('mano');
+            const isFormal = !response.includes(' ') && !response.includes('mano');
 
             console.log('\n🔍 Análise:');
             console.log(`- Tom casual (gírias): ${isBasic}`);

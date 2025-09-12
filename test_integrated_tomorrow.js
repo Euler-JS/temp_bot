@@ -111,7 +111,7 @@ async function testIntegratedTomorrowForecast() {
 - Balance entre informal e informativo`;
                 default: // basic
                     return `- RESPOSTA SIMPLES: Use linguagem muito fácil e acessível
-- Linguagem moçambicana casual, gírias OK ("Eh pá", "mano", etc.)
+- Linguagem moçambicana casual, gírias OK (" ", "mano", etc.)
 - Evite termos técnicos complexos
 - Foque no prático e útil`;
             }

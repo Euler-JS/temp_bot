@@ -125,7 +125,7 @@ async function testNaturalPrompts() {
     console.log('✨ PROMPT NOVO: Natural, conversacional, flexível');
     console.log('\n📝 Exemplo de diferença:');
     console.log('ANTIGO: "SISTEMA: Assistente meteorológico AI para Moçambique"');
-    console.log('NOVO: "Eh pá, sou um assistente que entende bem como os moçambicanos falam sobre o tempo"');
+    console.log('NOVO: " sou um assistente que entende bem como os moçambicanos falam sobre o tempo"');
 
     console.log('\n🎯 RESULTADO ESPERADO:');
     console.log('- Análises mais precisas para linguagem moçambicana');
