@@ -4,7 +4,7 @@
 const beiraLocations = {
     praias: [
         {
-            nome: "Praia da Beira",
+            nome: "Praia da Vileiro",
             descricao: "Praia urbana, boa para passeios e frutos do mar frescos",
             tipo: "urbana"
         },
@@ -19,11 +19,11 @@ const beiraLocations = {
             distancia: "32 km",
             tipo: "esportes"
         },
-        {
-            nome: "Praia de Nova Sofala (Danga)",
-            descricao: "Ambiente tranquilo e isolado, ideal para descanso",
-            tipo: "tranquila"
-        }
+        // {
+        //     nome: "Praia de Nova Sofala (Danga)",
+        //     descricao: "Ambiente tranquilo e isolado, ideal para descanso",
+        //     tipo: "tranquila"
+        // }
     ],
 
     lazer: [
@@ -222,6 +222,8 @@ const beiraLocationUtils = {
         );
     },
 
+
+
     // Gerar sugestões baseadas no contexto (tempo, hora, etc.)
     getSuggestionsByContext: (context) => {
         const { temperatura, condicao, hora, intent } = context;
@@ -247,14 +249,23 @@ const beiraLocationUtils = {
 
         // Lógica baseada no intent
         if (intent?.includes('atividade') || intent?.includes('fazer')) {
-            suggestions.push(...beiraLocations.lazer.slice(0, 3));
+            suggestions.push(...getRandomItems(beiraLocations.lazer.slice(0, 3)));
         }
 
         if (intent?.includes('comer') || intent?.includes('restaurante')) {
-            suggestions.push(...beiraLocations.restaurantes.slice(0, 3));
+            suggestions.push(...getRandomItems(beiraLocations.restaurantes.slice(0, 3)));
         }
 
-        return suggestions.slice(0, 5); // Máximo 5 sugestões
+
+        const uniqueSuggestions = [];
+        const seen = new Set();
+        for (const item of suggestions) {
+            if (!seen.has(item.nome)) {
+                seen.add(item.nome);
+                uniqueSuggestions.push(item);
+            }
+        }
+        return uniqueSuggestions.slice(0, 5); // Máximo 5 sugestões
     },
 
     // Formatar para WhatsApp
@@ -268,6 +279,12 @@ const beiraLocationUtils = {
             description: item.descricao.length > 72 ? item.descricao.substring(0, 69) + '...' : item.descricao
         }));
     }
+};
+
+const getRandomItems = (array, count) => {
+    if (!array || array.length === 0) return [];
+    const shuffled = [...array].sort(() => 0.5 - Math.random());
+    return shuffled.slice(0, Math.min(count, array.length));
 };
 
 module.exports = {

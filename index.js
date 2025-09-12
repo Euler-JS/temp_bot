@@ -151,7 +151,9 @@ async function processAdvancedTextMessage(messageText, phoneNumber, enableAutoDe
   try {
     console.log(`🧠 Processamento avançado: "${messageText}"`);
 
-    // Verificar comandos especiais primeiro
+    // Verificar comandos especiais primeiro...
+    // [comandos existentes...]
+
     if (messageText.toLowerCase().startsWith('/sugestoes') ||
       messageText.toLowerCase().startsWith('/sugestões') ||
       messageText.toLowerCase() === 'sugestoes' ||
@@ -179,12 +181,36 @@ async function processAdvancedTextMessage(messageText, phoneNumber, enableAutoDe
       return await handleWeatherAlertsCommand(phoneNumber, user);
     }
 
+    // Comando para previsão de amanhã
+    if (messageText.toLowerCase().startsWith('/amanha') ||
+      messageText.toLowerCase() === 'amanha') {
+      return await handleTomorrowForecastCommand(phoneNumber, user);
+    }
+
+    // Comando para previsão dos próximos 7 dias
+    if (messageText.toLowerCase().startsWith('/proximos_dias') ||
+      messageText.toLowerCase() === 'proximos_dias') {
+      return await handleForecastRequest(phoneNumber, 7);
+      // return await handleProximosDiasCommand(phoneNumber, user);
+    }
+
     // Comando para apresentação completa da Joana Bot
-    if (messageText.toLowerCase().startsWith('/joana') ||
+    if (
+      messageText.toLowerCase().startsWith('/joana') ||
       messageText.toLowerCase().startsWith('/sobre') ||
       messageText.toLowerCase() === 'joana' ||
       messageText.toLowerCase() === 'sobre') {
       return await handleJoanaBotIntroduction(phoneNumber, user);
+    }
+
+    // NOVA LÓGICA: Limpar cache se mensagem é sobre clima
+    const isLikelyWeatherQuery = ['clima', 'tempo', 'temperature', 'calor', 'frio', 'chuva'].some(word =>
+      messageText.toLowerCase().includes(word)
+    );
+
+    if (isLikelyWeatherQuery) {
+      console.log('🗑️ Mensagem sobre clima detectada - limpando cache');
+      openaiService.clearProblematicCache();
     }
 
     // 1. Análise completa com IA
@@ -216,41 +242,77 @@ async function processAdvancedTextMessage(messageText, phoneNumber, enableAutoDe
     console.log(`🌤️ É pergunta sobre clima? ${isWeatherQuery}`);
 
     if (!isWeatherQuery) {
-      // Se a análise não identificou como clima, mas a mensagem contém palavras-chave de clima
-      // e o utilizador tem uma última cidade conhecida, presumir que é sobre clima nessa cidade.
-      const weatherKeywords = ['tempo', 'clima', 'temperatura', 'calor', 'frio', 'chuva', 'sol', 'vento', 'humidade', 'graus'];
-      const lowerMessage = messageText.toLowerCase();
-      const hasWeatherKeywords = weatherKeywords.some(k => lowerMessage.includes(k));
+      // CORREÇÃO: Se a mensagem claramente menciona clima, forçar como weather query
+      if (isLikelyWeatherQuery) {
+        console.log('🔄 Forçando como consulta meteorológica devido às palavras-chave');
 
-      if (hasWeatherKeywords && user?.last_city) {
-        console.log('ℹ️ Mensagem menciona clima e existe last_city; assumindo consulta sobre clima para', user.last_city);
-        // Forçar roteamento climático usando a última cidade conhecida
-        adaptedAnalysis.city = user.last_city;
-        // Continue para o roteamento meteorológico
-      } else {
-        // NÃO é sobre clima - usar resposta amigável em português moçambicano
-        console.log('💬 Pergunta não é sobre clima - usando resposta amigável');
+        // Modificar análise para ser sobre clima
+        adaptedAnalysis.type = 'weather_data';
+        adaptedAnalysis.action = 'current';
+        adaptedAnalysis.intent = 'weather_query_current';
+        adaptedAnalysis.requires_weather_data = true;
 
-        const friendlyResponse = await openaiService.generateFriendlyMozambicanResponse(
-          messageText,
-          analysis,
-          {
-            queryCount: user?.query_count || 0,
-            lastCity: user?.last_city,
-            expertiseLevel: user?.expertise_level || 'basic'
-          }
-        );
+        // Se não há last_city, usar Beira como padrão
+        if (!user?.last_city || user.last_city === 'Não definido') {
+          console.log('📍 Não há last_city, usando Beira como padrão');
+          adaptedAnalysis.city = 'Beira';
 
-        if (friendlyResponse.success) {
-          await whatsappApi.enviarMensagemUsandoWhatsappAPI(friendlyResponse.message, phoneNumber);
-
-          // Atualizar contador de consultas
+          // Atualizar usuário com cidade padrão
           await saveOrUpdateAdvancedUser(phoneNumber, {
-            query_count: (user?.query_count || 0) + 1,
-            last_interaction_type: 'general_friendly'
+            last_city: 'Beira',
+            preferred_city: user?.preferred_city || 'Beira'
           });
+        } else {
+          adaptedAnalysis.city = user.last_city;
+        }
+      } else {
+        // Se a análise não identificou como clima, mas a mensagem contém palavras-chave de clima
+        // e o utilizador tem uma última cidade conhecida, presumir que é sobre clima nessa cidade.
+        const weatherKeywords = ['tempo', 'clima', 'temperatura', 'calor', 'frio', 'chuva', 'sol', 'vento', 'humidade', 'graus'];
+        const lowerMessage = messageText.toLowerCase();
+        const hasWeatherKeywords = weatherKeywords.some(k => lowerMessage.includes(k));
 
-          return friendlyResponse.message;
+        if (hasWeatherKeywords && user?.last_city && user.last_city !== 'Não definido') {
+          console.log('ℹ️ Mensagem menciona clima e existe last_city; assumindo consulta sobre clima para', user.last_city);
+          adaptedAnalysis.city = user.last_city;
+        } else if (hasWeatherKeywords) {
+          // Se menciona clima mas não tem cidade, usar Beira como padrão
+          console.log('ℹ️ Mensagem menciona clima mas sem cidade; usando Beira como padrão');
+          adaptedAnalysis.type = 'weather_data';
+          adaptedAnalysis.action = 'current';
+          adaptedAnalysis.intent = 'weather_query_current';
+          adaptedAnalysis.requires_weather_data = true;
+          adaptedAnalysis.city = 'Beira';
+
+          await saveOrUpdateAdvancedUser(phoneNumber, {
+            last_city: 'Beira',
+            preferred_city: user?.preferred_city || 'Beira'
+          });
+        } else {
+          // NÃO é sobre clima - usar resposta amigável em português moçambicano
+          console.log('💬 Pergunta não é sobre clima - usando resposta amigável');
+
+          const friendlyResponse = await openaiService.generateFriendlyMozambicanResponse(
+            messageText,
+            analysis,
+            {
+              queryCount: user?.query_count || 0,
+              lastCity: user?.last_city,
+              expertiseLevel: user?.expertise_level || 'basic'
+            }
+          );
+
+          if (friendlyResponse.success) {
+            await whatsappApi.enviarMensagemUsandoWhatsappAPI(friendlyResponse.message, phoneNumber);
+
+            // Atualizar contador de consultas
+            await saveOrUpdateAdvancedUser(phoneNumber, {
+              query_count: (user?.query_count || 0) + 1,
+              last_interaction_type: 'general_friendly'
+            });
+
+            return friendlyResponse.message;
+          }
         }
       }
     }
@@ -258,7 +320,7 @@ async function processAdvancedTextMessage(messageText, phoneNumber, enableAutoDe
     // É sobre clima - continuar com roteamento normal
     console.log('🌤️ Pergunta sobre clima - usando roteamento meteorológico');
 
-    // 2. Roteamento inteligente (com controle de detecção automática de bairros)
+    // 2. Roteamento inteligente
     const response = await routeAdvancedRequest(adaptedAnalysis, messageText, phoneNumber, user, enableAutoDetection);
 
     // 3. Salvar contexto da conversa
@@ -274,6 +336,7 @@ async function processAdvancedTextMessage(messageText, phoneNumber, enableAutoDe
     await processBasicFallback(messageText, phoneNumber);
   }
 }
+
 
 async function routeAdvancedRequest(analysis, originalMessage, phoneNumber, user) {
   const { type, action, intent } = analysis;
@@ -1016,6 +1079,52 @@ async function handleAdvancedWeatherData(analysis, phoneNumber, user) {
     console.log('📤 Enviando mensagem final:', finalMessage.substring(0, 100) + '...');
 
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(finalMessage, phoneNumber);
+
+    // Enviar botões interativos com opções rápidas: Clima amanhã e Clima 7 dias
+    try {
+      const forecastButtons = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: phoneNumber,
+        type: 'interactive',
+        interactive: {
+          type: 'button',
+          body: {
+            text: 'Queres ver mais? Escolhe uma opção rápida:'
+          },
+          action: {
+            buttons: [
+              {
+                type: 'reply',
+                reply: {
+                  id: 'forecast_tomorrow_current',
+                  title: 'Clima amanhã'
+                }
+              },
+              {
+                type: 'reply',
+                reply: {
+                  id: 'forecast_7days_current',
+                  title: 'Clima 7 dias'
+                }
+              }
+            ]
+          }
+        }
+      };
+
+      // Delay curto para não sobrepor com a mensagem principal
+      setTimeout(async () => {
+        try {
+          await whatsappApi.enviarMensagemInterativaUsandoWhatsappAPI(forecastButtons);
+          console.log('✅ Botões de previsão enviados');
+        } catch (err) {
+          console.error('❌ Falha ao enviar botões de previsão:', err?.message || err);
+        }
+      }, 1200);
+    } catch (err) {
+      console.error('❌ Erro ao construir/enviar botões de previsão:', err?.message || err);
+    }
 
     // Salvar histórico meteorológico
     await saveAdvancedWeatherHistory(phoneNumber, weatherData, analysis);
@@ -1887,7 +1996,7 @@ async function handleOffTopicAdvanced(analysis, phoneNumber, user) {
 🏘️ *Conselhos para bairros da Beira disponíveis!*
 📍 Exemplo: "Conselhos para Macúti se chover" ou usa \`/conselhos\`
 
-💬 Pergunta algo tipo: "Como está o tempo em Maputo?" ou \`/sugestoes\``;
+💬 Pergunta algo tipo: "Como está o tempo em Beira?" ou \`/sugestoes\``;
 
   await whatsappApi.enviarMensagemUsandoWhatsappAPI(offTopicMessage, phoneNumber);
   return offTopicMessage;
@@ -2122,6 +2231,20 @@ async function processAdvancedInteractiveMessage(interactive, phoneNumber) {
     console.log(`🔘 Botão pressionado: ${buttonId} - "${buttonTitle}"`);
 
     // Processar botões específicos primeiro
+    // Exact quick actions for current-city forecast buttons
+    if (buttonId === 'forecast_tomorrow_current') {
+      // Directly call the tomorrow forecast handler for the user's current/preferred city
+      await handleTomorrowForecastCommand(phoneNumber, user);
+      return;
+    }
+
+    if (buttonId === 'forecast_7days_current') {
+      // Directly call the 7-day forecast handler for the user's current/preferred city
+      await handleForecastRequest(phoneNumber, 7);
+      return;
+    }
+
+    // Backwards-compatible: city-specific forecast buttons (forecast_7days_[city], forecast_tomorrow_[city])
     if (buttonId.startsWith("forecast_7days_")) {
       const cityPart = buttonId.replace("forecast_7days_", "").split('_')[0];
       const city = cityPart === "current" ?
@@ -4119,6 +4242,124 @@ async function handleJoanaBotIntroduction(phoneNumber, user) {
     console.error('❌ Erro ao processar comando /joana:', error);
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(
       '❌ Eish, algo deu errado! Sou a Joana Bot, tenta novamente.',
+      phoneNumber
+    );
+    return null;
+  }
+}
+
+async function handleTomorrowForecastCommand(phoneNumber, user) {
+  try {
+    console.log(`📅 Comando /amanha acionado para ${phoneNumber}`);
+
+    // Buscar dados atuais do clima para determinar a cidade
+    const targetCity = user?.preferred_city || user?.last_city || 'Beira';
+
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, `📅 Eh pá, deixa eu ver como vai estar amanhã em ${targetCity}...`);
+
+    // Buscar previsão de 2 dias (hoje e amanhã)
+    const forecast = await weatherService.getWeatherForecast(targetCity, 2);
+
+    if (!forecast || !forecast.forecasts || forecast.forecasts.length < 2) {
+      await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+        `❌ Eh pá, não consegui obter a previsão para amanhã em ${targetCity}. Tenta mais tarde.`,
+        phoneNumber
+      );
+      return null;
+    }
+
+    // Pegar dados de amanhã (índice 1)
+    const tomorrowData = forecast.forecasts[1];
+
+    // Preparar prompt para a AI gerar a resposta
+    const tomorrowPrompt = `
+Eh pá, sou a Joana Bot, a tua assistente meteorológica aqui na Beira! 🇲🇿
+
+Baseado nos dados meteorológicos oficiais para amanhã em ${forecast.city}:
+
+🌡️ Temperatura: ${tomorrowData.minTemp}${forecast.units} - ${tomorrowData.maxTemp}${forecast.units}
+📝 Condições: ${tomorrowData.description}
+💧 Umidade: ${tomorrowData.humidity || 'não disponível'}%
+🌧️ Chance de chuva: ${tomorrowData.chanceOfRain || 0}%
+💨 Vento: ${tomorrowData.windSpeed || 'não disponível'} km/h
+
+Gera uma resposta amigável e natural em português moçambicano, explicando a previsão para amanhã. Inclui:
+1. Uma saudação simpática
+2. Os dados principais de forma clara
+3. Interpretação do que significa (se está bom, ruim, etc.)
+4. Dicas práticas baseadas no tempo (roupa, atividades, cuidados)
+5. Uma despedida motivacional
+
+Mantém o tom conversacional, como se estivesse falando com um amigo da Beira. Máximo 300 palavras.
+    `;
+
+    // Chamar AI para gerar a resposta
+    const aiResponse = await openaiService.callOpenAI(tomorrowPrompt, 0.7);
+
+    let tomorrowMessage;
+    if (aiResponse && aiResponse.trim()) {
+      tomorrowMessage = aiResponse.trim();
+      console.log('✅ Resposta AI para amanhã gerada com sucesso');
+    } else {
+      // Fallback caso a AI falhe
+      console.log('⚠️ AI falhou, usando fallback para amanhã');
+      const emoji = getWeatherEmoji(tomorrowData.description);
+      tomorrowMessage = `📅 *Previsão para amanhã em ${forecast.city}*\n\n`;
+      tomorrowMessage += `${emoji} *${tomorrowData.dayName || 'Amanhã'}*\n`;
+      tomorrowMessage += `🌡️ ${tomorrowData.minTemp}${forecast.units} - ${tomorrowData.maxTemp}${forecast.units}\n`;
+      tomorrowMessage += `📝 ${tomorrowData.description}\n`;
+
+      if (tomorrowData.humidity) {
+        tomorrowMessage += `💧 Umidade: ${tomorrowData.humidity}%\n`;
+      }
+      if (tomorrowData.chanceOfRain && tomorrowData.chanceOfRain > 0) {
+        tomorrowMessage += `🌧️ Chuva: ${tomorrowData.chanceOfRain}%\n`;
+      }
+      if (tomorrowData.windSpeed && tomorrowData.windSpeed > 0) {
+        tomorrowMessage += `💨 Vento: ${tomorrowData.windSpeed} km/h\n`;
+      }
+
+      tomorrowMessage += `\n💡 *Dica da Joana Bot:* Planifica as tuas actividades baseado nesta previsão!`;
+    }
+
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(tomorrowMessage, phoneNumber);
+
+    // Atualizar dados do usuário
+    await saveOrUpdateAdvancedUser(phoneNumber, {
+      preferred_city: targetCity,
+      last_command: '/amanha'
+    });
+
+    return tomorrowMessage;
+
+  } catch (error) {
+    console.error('❌ Erro ao processar comando /amanha:', error);
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      "❌ Eh pá, não consegui ver a previsão para amanhã agora. Tenta mais tarde!",
+      phoneNumber
+    );
+    return null;
+  }
+}
+
+// ===============================================
+// COMANDO PARA PREVISÃO DOS PRÓXIMOS 7 DIAS
+// ===============================================
+
+async function handleProximosDiasCommand(phoneNumber, user) {
+  try {
+    console.log(`📅 Comando /proximos_dias acionado para ${phoneNumber}`);
+
+    // Buscar dados atuais do clima para determinar a cidade
+    const targetCity = user?.preferred_city || user?.last_city || 'Beira';
+
+    // Chamar a função existente de previsão semanal
+    return await handleWeeklyForecast(targetCity, phoneNumber, user);
+
+  } catch (error) {
+    console.error('❌ Erro ao processar comando /proximos_dias:', error);
+    await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      "❌ Eh pá, não consegui ver a previsão dos próximos dias agora. Tenta mais tarde!",
       phoneNumber
     );
     return null;

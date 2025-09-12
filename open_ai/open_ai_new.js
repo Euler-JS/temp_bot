@@ -360,7 +360,15 @@ Retorne APENAS array JSON:
             timeout: 15000
         });
 
-        return response.data.choices[0].message.content;
+        let content = response.data.choices[0].message.content;
+
+        // ====== NOVA LIMPEZA PARA FIXING JSON PARSING ======
+        // Remove markdown code blocks se existirem
+        content = content.replace(/```json\s*/, '').replace(/```\s*$/, '');
+        content = content.replace(/```\s*/, ''); // Remove ``` soltos
+        content = content.trim();
+
+        return content;
     }
 
     // Cache methods

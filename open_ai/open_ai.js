@@ -67,7 +67,7 @@ ${includeCommands ? `💡 *Comandos especiais:*
 • \`/conselhos\` - Conselhos de segurança importantes
 
 🗣️ *Podes perguntar:*
-• "Como está o tempo em Maputo?"
+• "Como está o tempo em Beira?"
 • "Vai chover hoje?"
 • "Que roupa usar?"
 • "Dicas para o calor"
@@ -347,12 +347,14 @@ Contexto da conversa:
 
 Preciso perceber o que eles realmente querem. SEJA MUITO PRECISO:
 
-PERGUNTAS SOBRE CLIMA/TEMPO:
-- "Maputo", "como está lá", "tempo hoje" → tempo_atual (requires_weather_data: true)
-- "amanhã", "previsão", "vai chover" → futuro (requires_weather_data: true)
-- "o que fazer", "há atividade", "onde ir" → ideias_de_atividades (requires_weather_data: true)
-- "que roupa", "como vestir" → conselhos_de_roupa (requires_weather_data: true)
-- "calor", "frio", "dicas clima" → weather_tips (requires_weather_data: true)
+PERGUNTAS SOBRE CLIMA/TEMPO (SEMPRE weather_query_current):
+- "clima", "tempo", "clima hoje", "tempo hoje" → weather_query_current (requires_weather_data: true)
+- "temperatura", "calor", "frio", "humidade" → weather_query_current (requires_weather_data: true)
+- "Maputo", "Beira", "como está lá" → weather_query_current (requires_weather_data: true)
+- "amanhã", "previsão", "vai chover" → weather_query_forecast (requires_weather_data: true)
+- "o que fazer", "há atividade", "onde ir" → activity_recommendation (requires_weather_data: true)
+- "que roupa", "como vestir" → clothing_advice (requires_weather_data: true)
+- "dicas clima" → weather_tips (requires_weather_data: true)
 - "zonas de risco", "áreas perigosas", "segurança", "inundação", "ciclone" → safety_zones (requires_weather_data: true)
 
 PERGUNTAS NÃO SOBRE CLIMA:
@@ -360,39 +362,49 @@ PERGUNTAS NÃO SOBRE CLIMA:
 - "ajuda", "não entendo", "comandos" → general_help (requires_weather_data: false)
 - "obrigado", "muito obrigado" → thanks (requires_weather_data: false)
 - "muito bom", "muito boa", "perfeito", "excelente", "óptimo" → positive_feedback (requires_weather_data: false)
-- "política", "governo", "eleições" → politics (requires_weather_data: false)
-- "comida", "onde comer", "restaurante" → food (requires_weather_data: false)
-- "comprar", "loja", "shopping" → shopping (requires_weather_data: false)
-- "que horas", "hora actual" → time_question (requires_weather_data: false)
-- "capital", "geografia", "história" → education_non_weather (requires_weather_data: false)
 
-PERGUNTAS SOBRE IDENTIDADE DO BOT - SEMPRE NÃO-CLIMÁTICAS:
-- "que você é", "quem é você", "quem és", "o que é" → general_help (requires_weather_data: false)
-- "o que você faz", "que é a tua função", "para que serves" → general_help (requires_weather_data: false)
-- "qual é o teu nome", "como te chamas", "que bot é este" → general_help (requires_weather_data: false)
-- "quem te criou", "qual é a tua função", "o que fazes" → general_help (requires_weather_data: false)
-- Qualquer pergunta sobre identidade, função, nome ou criador do bot → general_help (requires_weather_data: false)
-
-REGRA CRÍTICA: Se a pergunta é sobre O QUE O BOT É ou FAZ, é SEMPRE general_help e NUNCA sobre clima!
+REGRA CRÍTICA: 
+- Se a mensagem contém palavras como "clima", "tempo", "temperatura", "calor", "frio" → SEMPRE é sobre clima!
+- "Clima hoje" é SEMPRE weather_query_current, mesmo sem cidade específica!
+- Se é sobre clima mas não tem cidade, ainda é weather_query_current (o sistema vai pedir a cidade depois)
 
 Responde só o JSON:
 
 {
     "intent": "categoria_específica_da_lista_acima",
-    "confidence": 0.85,
+    "confidence": 0.95,
     "entities": {
-        "cities": ["só_se_mencionaram_cidades_para_clima"],
-        "timeframe": "quando_querem_saber",
-        "weather_aspect": "só_se_for_sobre_clima",
-        "activity_type": "só_se_for_atividade_baseada_no_clima"
+        "cities": ["só_se_mencionaram_cidades_explicitamente"],
+        "timeframe": "today_se_for_hoje_tomorrow_se_for_amanhã_ou_none",
+        "weather_aspect": "temperature_ou_rain_ou_general",
+        "activity_type": "só_se_for_atividade"
     },
-    "reasoning": "porque_penso_isso_e_se_é_ou_não_sobre_clima",
-    "response_type": "como_responder",
-    "priority": "urgência",
-    "requires_weather_data": true_ou_false_baseado_na_pergunta,
-    "suggested_followup": "o_que_sugerir_depois"
+    "reasoning": "porque_classifiquei_assim",
+    "response_type": "informative",
+    "priority": "high_se_for_clima_medium_se_for_outro",
+    "requires_weather_data": true_se_for_sobre_clima_false_se_não,
+    "suggested_followup": "contextual"
 }`;
     }
+
+    clearProblematicCache() {
+        // Limpar entradas de cache que possam estar causando problemas
+        const keysToDelete = [];
+
+        for (let key of this.analysisCache.keys()) {
+            if (key.includes('clima') || key.includes('tempo') || key.includes('weather')) {
+                keysToDelete.push(key);
+            }
+        }
+
+        keysToDelete.forEach(key => {
+            console.log(`🗑️ Removendo cache problemático: ${key}`);
+            this.analysisCache.delete(key);
+        });
+
+        console.log(`✅ Cache limpo: ${keysToDelete.length} entradas removidas`);
+    }
+
 
     // ===============================================
     // MÉTODO DE COMPATIBILIDADE PARA RESPOSTA CONTEXTUAL
@@ -446,7 +458,26 @@ Responde só o JSON:
             }
 
             const prompt = this.buildWeatherResponsePrompt(analysis, weatherData, userContext);
-            const response = await this.callOpenAI(prompt, 0.7);
+            let response = await this.callOpenAI(prompt, 0.7);
+
+            // ========================================
+            // NOVA VALIDAÇÃO: Verificar se resposta usa apenas locais reais
+            // ========================================
+            if (weatherData.city.toLowerCase() === 'beira') {
+                const validation = this.validateAIResponseForBeira(response);
+
+                if (!validation.isValid) {
+                    console.warn('🔄 Regenerando resposta - locais inexistentes detectados');
+
+                    // Prompt mais restritivo para regenerar
+                    const strictPrompt = `${prompt}
+
+ATENÇÃO ESPECIAL: A resposta anterior mencionou locais inexistentes: ${validation.invalidLocations.join(', ')}.
+REGENERAR resposta mencionando APENAS locais da lista fornecida. SEM inventar nomes de locais!`;
+
+                    response = await this.callOpenAI(strictPrompt, 0.5); // Temperatura menor para mais consistência
+                }
+            }
 
             return response.trim();
 
@@ -463,87 +494,78 @@ Responde só o JSON:
             analysis.intent === 'activity_recommendation' ||
             analysis.intent === 'tipo_de_atividade';
 
-        if (city.toLowerCase() === 'beira' && isActivityRequest) {
-            // Gerar sugestões diretamente a partir do banco de locais da Beira
-            const context = {
-                temperatura: temp,
-                condicao: weatherData.description?.toLowerCase(),
-                hora: (new Date()).getHours(),
-                intent: analysis.intent
-            };
+        // ====== MUDANÇA CRÍTICA: Sempre incluir locais se for Beira ======
+        if (city.toLowerCase() === 'beira') {
+            // Sempre incluir locais reais para qualquer pergunta sobre Beira
+            const locaisReaisPrompt = this.buildBeiraLocationsForPrompt();
 
-            const suggestions = beiraLocationUtils.getSuggestionsByContext(context);
-            const formattedSuggestions = suggestions.map(s => `📍 • ${s.nome} - ${s.descricao || ''}`).join('\n');
+            if (isActivityRequest) {
+                // Prompt específico para atividades (versão original melhorada)
+                const context = {
+                    temperatura: temp,
+                    condicao: weatherData.description?.toLowerCase(),
+                    hora: (new Date()).getHours(),
+                    intent: analysis.intent
+                };
 
-            // Construir listas por categoria: caminhadas, cafés ao ar livre, museus, parques
-            const uniqueByName = (items) => {
-                const seen = new Set();
-                return items.filter(i => {
-                    if (!i || !i.nome) return false;
-                    if (seen.has(i.nome)) return false;
-                    seen.add(i.nome);
-                    return true;
-                });
-            };
+                const suggestions = beiraLocationUtils.getSuggestionsByContext(context);
+                const formattedSuggestions = suggestions.map(s => `📍 • ${s.nome} - ${s.descricao || ''}`).join('\n');
 
-            const takeNames = (items, max = 3) => {
-                if (!items || items.length === 0) return ['Nenhum local listado'];
-                return uniqueByName(items).slice(0, max).map(i => `• ${i.nome} — ${i.descricao || ''}`);
-            };
+                return `${this.getBotIdentityContext()}
 
-            // Caminhadas: praias e parques/áreas verdes
-            const walksCandidates = [
-                ...(beiraLocations.praias || []),
-                ...(beiraLocationUtils.getByType('lazer', 'urbano') || []),
-                ...(beiraLocationUtils.getByType('lazer', 'natureza') || []),
-            ];
-            const walksList = takeNames(walksCandidates, 4);
+A pessoa perguntou sobre atividades/locais para ir hoje em Beira, com ${temp}°C e ${weatherData.description}.
 
-            // Cafés ao ar livre / esplanadas: restaurantes com vista ou padarias/cafés conhecidos
-            const outdoorCafeCandidates = (beiraLocations.restaurantes || []).filter(r =>
-                (r.vista && r.vista.toLowerCase().includes('praia')) ||
-                (r.especialidade && r.especialidade === 'padaria') ||
-                (r.nome && /bolos|café|cafe|padaria/i.test(r.nome))
-            );
-            const outdoorCafeList = takeNames(outdoorCafeCandidates.length ? outdoorCafeCandidates : beiraLocations.restaurantes, 4);
+DADOS METEOROLÓGICOS ATUAIS:
+- Temperatura: ${temp}°C
+- Condições: ${weatherData.description}
+- Humidade: ${weatherData.humidity}%
 
-            // Museus / locais culturais: historicos + lazer do tipo cultural
-            const museumCandidates = [
-                ...(beiraLocations.historicos || []),
-                ...(beiraLocationUtils.getByType('lazer', 'cultural') || [])
-            ];
-            const museumList = takeNames(museumCandidates, 4);
+IMPORTANTE - LOCAIS REAIS DA BEIRA DISPONÍVEIS:
+${locaisReaisPrompt}
 
-            // Parques para relaxar: lazer com 'Parque' ou tipo urbano/natureza
-            const parksCandidates = (beiraLocations.lazer || []).filter(l => /parque|parque de/i.test(l.nome) || ['urbano', 'natureza'].includes(l.tipo));
-            const parksList = takeNames(parksCandidates.length ? parksCandidates : beiraLocations.lazer, 4);
+INSTRUÇÕES CRÍTICAS:
+🚨 USA APENAS os locais listados acima - NUNCA inventes locais!
+🚨 Se mencionares um local, tem que ser da lista fornecida!
+🚨 NUNCA menciones: "Praia Nova", "Mercado do Peixe", "Jardim do Inhamízua", "Beira Shopping", "Jardins municipais" ou outros locais não listados!
 
-            const formattedCategorySections = `\n\n🚶 *Caminhadas e passeios:*\n${walksList.join('\n')}\n\n☕ *Cafés / esplanadas ao ar livre:*\n${outdoorCafeList.join('\n')}\n\n🏛️ *Museus / Locais culturais:*\n${museumList.join('\n')}\n\n🌳 *Parques para relaxar:*\n${parksList.join('\n')}`;
+FORMATO DA RESPOSTA:
+- Linguagem moçambicana natural e fluida 
+- Menciona 2-3 locais REAIS adequados para ${temp}°C
+- Explica porque são boas opções para esta temperatura
+- Máximo 250 palavras
+- Usa emojis apropriados
+- Tom amigável: "Eh pá", "mano", etc.
 
-            return `A pessoa perguntou onde pode ir hoje em Beira. Com ${temp}°C e ${weatherData.description}, quero dar uma resposta completa e estruturada.
+Baseado na temperatura de ${temp}°C, sugere locais REAIS da lista acima e explica porque são adequados hoje.
 
-FORMATO IDEAL DA RESPOSTA:
+Minha resposta natural e fluida usando APENAS locais reais:`;
+            } else {
+                // ====== NOVO: Para consultas de clima simples, também incluir locais ======
+                return `${this.getBotIdentityContext()}
 
-🗺️ *Eh pá, vou te dar umas ideias fixes de locais para ires hoje em Beira!*
+A pessoa perguntou: "${analysis.intent}" sobre o clima em Beira.
 
-🌤️ *Como está o tempo:*
-• ${temp}°C - ${weatherData.description}
-• Humidade: ${weatherData.humidity}%
+TEMPO ATUAL em ${city}:
+- ${temp}°C (${temp > 30 ? 'bem quente!' : temp < 18 ? 'fresquinho' : 'temperatura boa'})
+- ${weatherData.description}
+- Humidade: ${weatherData.humidity}%
 
-[Depois escolher uma das categorias baseada na temperatura]:
+LOCAIS REAIS DA BEIRA DISPONÍVEIS (se quiseres mencionar algum):
+${locaisReaisPrompt}
 
-${this.getLocationCategoryForTemperature(temp, weatherData.description)}
+INSTRUÇÕES:
+- Responde sobre o clima de forma natural como um moçambicano
+- Se mencionares locais, usa APENAS os da lista acima
+- NUNCA inventes locais como "Praia Nova", "Mercado do Peixe", "Jardim do Inhamízua"
+- Podes sugerir 1-2 locais reais se for relevante para o clima
+- Linguagem moçambicana casual, emojis apropriados, máximo 200 palavras
+- Tom: "Eh pá", "mano", etc.
 
-${formattedCategorySections}
+Minha resposta natural sobre o clima (mencionando locais reais se relevante):`;
+            }
 
-�️ *Locais específicos da Beira:*
-${formattedSuggestions}
-
-💬 *Quer saber mais sobre algum local específico?*
-Exemplo: "Como está o Macúti hoje?" ou "Restaurantes no Manga"
-
-Responde exatamente neste formato, adaptando só a parte da temperatura:`;
         } else {
+            // Para outras cidades (comportamento original)
             return `Eh pá, vou te ajudar com informações fixes sobre ${city}!
 
 PERGUNTA: ${analysis.intent}
@@ -559,6 +581,91 @@ Use linguagem moçambicana casual, emojis apropriados, máximo 300 palavras.
 Minha resposta:`;
         }
     }
+
+
+    buildBeiraLocationsForPrompt() {
+        let locaisPrompt = '';
+
+        // Praias
+        locaisPrompt += '\n🏖️ PRAIAS REAIS:\n';
+        beiraLocations.praias.forEach(praia => {
+            locaisPrompt += `• ${praia.nome} - ${praia.descricao}\n`;
+        });
+
+        // Restaurantes mais conhecidos (top 5)
+        locaisPrompt += '\n🍽️ RESTAURANTES REAIS (principais):\n';
+        beiraLocations.restaurantes.slice(0, 5).forEach(rest => {
+            locaisPrompt += `• ${rest.nome} - ${rest.descricao}${rest.especialidade ? ` (${rest.especialidade})` : ''}\n`;
+        });
+
+        // Fast Food
+        locaisPrompt += '\n🍔 FAST FOOD REAIS:\n';
+        beiraLocations.fastFood.slice(0, 4).forEach(fast => {
+            locaisPrompt += `• ${fast.nome} - ${fast.descricao}\n`;
+        });
+
+        // Locais Históricos principais
+        locaisPrompt += '\n🏛️ LOCAIS HISTÓRICOS REAIS:\n';
+        beiraLocations.historicos.slice(0, 4).forEach(hist => {
+            locaisPrompt += `• ${hist.nome} - ${hist.descricao}\n`;
+        });
+
+        // Lazer/Entretenimento
+        locaisPrompt += '\n🎯 LAZER/ENTRETENIMENTO REAIS:\n';
+        beiraLocations.lazer.slice(0, 5).forEach(lazer => {
+            locaisPrompt += `• ${lazer.nome} - ${lazer.descricao}\n`;
+        });
+
+        locaisPrompt += '\n⚠️ CRÍTICO: Estes são TODOS os locais disponíveis. NÃO exists mais nenhum além destes! NUNCA inventes nomes de locais!';
+
+        return locaisPrompt;
+    }
+
+
+    // ========================================
+    // FUNÇÃO AUXILIAR: Validar resposta da IA
+    // ========================================
+    validateAIResponseForBeira(aiResponse) {
+        // Lista de locais que a IA não deve mencionar (locais ficcionais comuns)
+        const locaisProibidos = [
+            'praia nova',
+            'mercado do peixe',
+            'jardim do inhamízua',
+            'beira shopping',
+            'jardins municipais',
+            'mercado central',
+            'porto da beira',
+            'terminal rodoviário central'
+        ];
+
+        const responseTexto = aiResponse.toLowerCase();
+        let temLocaisInventados = false;
+        let locaisEncontrados = [];
+
+        locaisProibidos.forEach(local => {
+            if (responseTexto.includes(local)) {
+                temLocaisInventados = true;
+                locaisEncontrados.push(local);
+            }
+        });
+
+        if (temLocaisInventados) {
+            console.warn('🚨 IA mencionou locais inexistentes:', locaisEncontrados);
+            // Poderías implementar fallback ou regenerar a resposta
+            return {
+                isValid: false,
+                invalidLocations: locaisEncontrados,
+                suggestion: 'Regenerar resposta sem locais inexistentes'
+            };
+        }
+
+        return {
+            isValid: true,
+            message: 'Resposta válida - apenas locais reais mencionados'
+        };
+    }
+
+
 
     getLocationCategoryForTemperature(temp, description) {
         if (description.toLowerCase().includes('chuva')) {
@@ -2053,8 +2160,8 @@ Responde só: ["sugestão1", "sugestão2", "sugestão3"]`;
         const lowerMessage = message.toLowerCase().trim();
 
         // Análise baseada em palavras-chave
-        let intent = 'general_help'; // Mudei default para general ao invés de weather
-        let confidence = 0.4; // Baixei confidence para casos não identificados
+        let intent = 'general_help'; // Default
+        let confidence = 0.4;
         let entities = {
             cities: [],
             timeframe: 'none',
@@ -2062,20 +2169,32 @@ Responde só: ["sugestão1", "sugestão2", "sugestão3"]`;
             activity_type: 'none'
         };
 
-        // Detectar cidades - SÓ se houver outras palavras indicativas de clima
+        // Detectar cidades
         const cities = ['maputo', 'beira', 'nampula', 'quelimane', 'tete', 'chimoio', 'pemba', 'xai-xai', 'lichinga', 'inhambane'];
         const hasCities = cities.some(city => lowerMessage.includes(city));
-
-        // Palavras que indicam consulta meteorológica
-        const weatherKeywords = ['tempo', 'clima', 'temperatura', 'calor', 'frio', 'chuva', 'sol', 'vento', 'humidade', 'graus', 'meteorologia'];
-        const hasWeatherKeywords = weatherKeywords.some(word => lowerMessage.includes(word));
 
         if (hasCities) {
             entities.cities = cities.filter(city => lowerMessage.includes(city));
         }
 
-        // Detectar intenções específicas primeiro
-        if (lowerMessage.includes('muito bom') || lowerMessage.includes('muito boa') || lowerMessage.includes('perfeito') ||
+        // Palavras que indicam consulta meteorológica
+        const weatherKeywords = ['tempo', 'clima', 'temperatura', 'calor', 'frio', 'chuva', 'sol', 'vento', 'humidade', 'graus'];
+        const hasWeatherKeywords = weatherKeywords.some(word => lowerMessage.includes(word));
+
+        // CORREÇÃO CRÍTICA: Priorizar detecção de clima
+        if (hasWeatherKeywords || lowerMessage === 'clima hoje' || lowerMessage === 'tempo hoje') {
+            intent = 'weather_query_current';
+            confidence = 0.9; // Alta confiança
+            entities.weather_aspect = 'general';
+
+            if (lowerMessage.includes('hoje')) {
+                entities.timeframe = 'today';
+            }
+
+            console.log('✅ Detectado como consulta meteorológica pela análise de regras');
+        }
+        // Detectar outras intenções específicas
+        else if (lowerMessage.includes('muito bom') || lowerMessage.includes('muito boa') || lowerMessage.includes('perfeito') ||
             lowerMessage.includes('excelente') || lowerMessage.includes('óptimo') || lowerMessage.includes('ótimo')) {
             intent = 'positive_feedback';
             confidence = 0.95;
@@ -2099,18 +2218,11 @@ Responde só: ["sugestão1", "sugestão2", "sugestão3"]`;
         } else if (lowerMessage.includes('dicas')) {
             intent = 'weather_tips';
             confidence = 0.8;
-        } else if (lowerMessage.includes('zona') && (lowerMessage.includes('risco') || lowerMessage.includes('perigosa')) ||
-            lowerMessage.includes('segurança') || lowerMessage.includes('inundação') || lowerMessage.includes('ciclone')) {
-            intent = 'safety_zones';
-            confidence = 0.9;
-        } else if (lowerMessage.includes('alerta') || lowerMessage.includes('/alertas') || lowerMessage.includes('perigo')) {
-            intent = 'weather_alerts';
-            confidence = 0.9;
         } else if (lowerMessage.includes('amanhã') || lowerMessage.includes('previsão')) {
             intent = 'weather_query_forecast';
             confidence = 0.8;
             entities.timeframe = 'tomorrow';
-        } else if (hasWeatherKeywords || (hasCities && lowerMessage.length > 3)) {
+        } else if (hasCities && lowerMessage.length > 3) {
             // SÓ classificar como weather se tiver palavras-chave de clima OU cidade + contexto
             intent = 'weather_query_current';
             confidence = 0.7;
@@ -2122,9 +2234,9 @@ Responde só: ["sugestão1", "sugestão2", "sugestão3"]`;
                 intent: intent,
                 confidence: confidence,
                 entities: entities,
-                reasoning: 'Análise baseada em palavras-chave',
+                reasoning: `Análise baseada em regras - detectou "${intent}" com confiança ${confidence}`,
                 response_type: 'informative',
-                priority: 'medium',
+                priority: hasWeatherKeywords ? 'high' : 'medium',
                 requires_weather_data: intent.includes('weather') || intent.includes('activity') || intent.includes('clothing') || intent === 'safety_zones',
                 suggested_followup: 'contextual'
             },
@@ -2193,7 +2305,15 @@ Responde só: ["sugestão1", "sugestão2", "sugestão3"]`;
             timeout: 15000
         });
 
-        return response.data.choices[0].message.content;
+        let content = response.data.choices[0].message.content;
+
+        // ====== NOVA LIMPEZA PARA FIXING JSON PARSING ======
+        // Remove markdown code blocks se existirem
+        content = content.replace(/```json\s*/, '').replace(/```\s*$/, '');
+        content = content.replace(/```\s*/, ''); // Remove ``` soltos
+        content = content.trim();
+
+        return content;
     }
 
     // Cache methods
