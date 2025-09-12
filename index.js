@@ -2535,12 +2535,139 @@ async function handleForecastRequest(phoneNumber, days = 7) {
     const user = await getUserByContact(phoneNumber);
     const city = user?.preferred_city || user?.last_city || 'Maputo';
 
-    await whatsappApi.enviarMensagemCarregamento(phoneNumber, `🔍 Eh pá, deixa ver a previsão de ${days} dias para ${city}...`);
+    // Detectar nível de expertise do usuário
+    const userLevel = (user && (user.expertiseLevel || user.expertise_level || user.preferred_complexity)) ?
+      (user.expertiseLevel || user.expertise_level || user.preferred_complexity) : 'basic';
+
+    console.log(`🎯 Nível do usuário: ${userLevel}`);
+
+    // Mensagem de carregamento adaptada ao nível
+    const loadingMessage = userLevel === 'advanced'
+      ? `🔍 Analisando dados meteorológicos de ${days} dias para ${city}...`
+      : userLevel === 'intermediate'
+        ? `🔍 Preparando previsão detalhada de ${days} dias para ${city}...`
+        : `🔍 Eh pá, deixa ver a previsão de ${days} dias para ${city}...`;
+
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, loadingMessage);
 
     const forecastData = await weatherService.getWeatherForecast(city, days);
 
     if (forecastData && forecastData.forecasts && forecastData.forecasts.length > 0) {
-      let forecastMessage = `📅 *Previsão de ${days} dias para ${forecastData.city}*\n\n`;
+
+      // Gerar mensagem baseada no nível do usuário
+      let forecastMessage = generateForecastMessageByLevel(userLevel, forecastData, days);
+
+      await whatsappApi.enviarMensagemUsandoWhatsappAPI(forecastMessage, phoneNumber);
+
+      // Atualizar dados do usuário
+      await saveOrUpdateAdvancedUser(phoneNumber, {
+        preferred_city: city,
+        last_command: `/proximos_${days}_dias`,
+        query_count: (user?.query_count || 0) + 1
+      });
+
+    } else {
+      const errorMessage = userLevel === 'advanced'
+        ? `❌ Não foi possível obter os dados meteorológicos para ${city}. Verifique a denominação da localidade e tente novamente.`
+        : userLevel === 'intermediate'
+          ? `❌ Não consegui obter a previsão para ${city}. Verifica o nome da cidade e tenta novamente.`
+          : `❌ Eh pá, não consegui obter a previsão para ${city}. Verifica se o nome da cidade está correto e tenta novamente.`;
+
+      await whatsappApi.enviarMensagemUsandoWhatsappAPI(errorMessage, phoneNumber);
+    }
+  } catch (error) {
+    console.error('❌ Erro ao processar previsão:', error);
+
+    // Buscar usuário novamente para error message se necessário
+    const user = await getUserByContact(phoneNumber).catch(() => null);
+    const userLevel = (user && (user.expertiseLevel || user.expertise_level || user.preferred_complexity)) ?
+      (user.expertiseLevel || user.expertise_level || user.preferred_complexity) : 'basic';
+
+    const errorMessage = userLevel === 'advanced'
+      ? "❌ Erro no sistema meteorológico. Favor tentar novamente."
+      : "❌ Eh pá, algo deu errado. Tenta mais tarde.";
+
+    await whatsappApi.enviarMensagemErro(phoneNumber, errorMessage);
+  }
+}
+
+// Função auxiliar para gerar mensagem baseada no nível do usuário
+function generateForecastMessageByLevel(userLevel, forecastData, days) {
+  let forecastMessage = '';
+
+  switch (userLevel) {
+    case 'advanced':
+      // Nível avançado: formato técnico e detalhado
+      forecastMessage = `📊 *Análise Meteorológica ${days} Dias - ${forecastData.city}*\n\n`;
+
+      forecastData.forecasts.slice(0, days).forEach((day, index) => {
+        const emoji = getWeatherEmoji(day.description);
+        const dayName = day.dayName || (index === 0 ? 'Hoje' : index === 1 ? 'Amanhã' :
+          new Date(day.date).toLocaleDateString('pt-MZ', { weekday: 'long', day: 'numeric', month: 'short' }));
+
+        forecastMessage += `${emoji} **${dayName}**\n`;
+        forecastMessage += `🌡️ Amplitude térmica: ${day.minTemp}${forecastData.units} - ${day.maxTemp}${forecastData.units}\n`;
+        forecastMessage += `📝 Condições atmosféricas: ${day.description}\n`;
+
+        if (day.humidity) {
+          forecastMessage += `💧 Humidade relativa: ${day.humidity}%\n`;
+        }
+        if (day.chanceOfRain && day.chanceOfRain > 0) {
+          forecastMessage += `🌧️ Probabilidade de precipitação: ${day.chanceOfRain}%\n`;
+        }
+        if (day.windSpeed && day.windSpeed > 0) {
+          forecastMessage += `💨 Velocidade do vento: ${day.windSpeed} km/h\n`;
+        }
+        if (day.pressure) {
+          forecastMessage += `🔘 Pressão atmosférica: ${day.pressure} hPa\n`;
+        }
+        if (day.uvIndex) {
+          forecastMessage += `☀️ Índice UV: ${day.uvIndex}\n`;
+        }
+
+        forecastMessage += `\n`;
+      });
+
+      forecastMessage += `\n🎯 **Recomendação técnica:** Baseie o planeamento das atividades na análise dos parâmetros meteorológicos apresentados.`;
+      forecastMessage += `\n📊 _Fonte de dados: ${forecastData.source}_`;
+      break;
+
+    case 'intermediate':
+      // Nível intermediário: equilibrio entre técnico e acessível
+      forecastMessage = `📅 *Previsão Detalhada ${days} Dias - ${forecastData.city}*\n\n`;
+
+      forecastData.forecasts.slice(0, days).forEach((day, index) => {
+        const emoji = getWeatherEmoji(day.description);
+        const dayName = day.dayName || (index === 0 ? 'Hoje' : index === 1 ? 'Amanhã' :
+          new Date(day.date).toLocaleDateString('pt-MZ', { weekday: 'long', day: 'numeric' }));
+
+        forecastMessage += `${emoji} **${dayName}**\n`;
+        forecastMessage += `🌡️ Temperatura: ${day.minTemp}${forecastData.units} - ${day.maxTemp}${forecastData.units}\n`;
+        forecastMessage += `📝 Condições: ${day.description}\n`;
+
+        if (day.humidity) {
+          const humidityLevel = day.humidity > 80 ? 'alta' : day.humidity > 60 ? 'moderada' : 'baixa';
+          forecastMessage += `💧 Humidade: ${day.humidity}% (${humidityLevel})\n`;
+        }
+        if (day.chanceOfRain && day.chanceOfRain > 0) {
+          const rainLevel = day.chanceOfRain > 70 ? 'alta probabilidade' : day.chanceOfRain > 40 ? 'possível' : 'baixa chance';
+          forecastMessage += `🌧️ Chuva: ${day.chanceOfRain}% (${rainLevel})\n`;
+        }
+        if (day.windSpeed && day.windSpeed > 0) {
+          const windLevel = day.windSpeed > 20 ? 'vento forte' : day.windSpeed > 10 ? 'brisa moderada' : 'vento leve';
+          forecastMessage += `💨 Vento: ${day.windSpeed} km/h (${windLevel})\n`;
+        }
+
+        forecastMessage += `\n`;
+      });
+
+      forecastMessage += `\n💡 **Dica da Joana Bot:** Planifica as atividades considerando estes dados meteorológicos detalhados!`;
+      forecastMessage += `\n📊 _Dados: ${forecastData.source}_`;
+      break;
+
+    default: // basic
+      // Nível básico: formato simples e amigável
+      forecastMessage = `📅 *Previsão de ${days} dias para ${forecastData.city}*\n\n`;
 
       forecastData.forecasts.slice(0, days).forEach((day, index) => {
         const emoji = getWeatherEmoji(day.description);
@@ -2551,7 +2678,7 @@ async function handleForecastRequest(phoneNumber, days = 7) {
         forecastMessage += `   🌡️ ${day.minTemp}${forecastData.units} - ${day.maxTemp}${forecastData.units}\n`;
         forecastMessage += `   ${day.description}\n`;
 
-        // Adicionar informações extras se disponíveis
+        // Adicionar informações extras se disponíveis (formato simples)
         if (day.humidity) {
           forecastMessage += `   💧 Umidade: ${day.humidity}%\n`;
         }
@@ -2567,18 +2694,10 @@ async function handleForecastRequest(phoneNumber, days = 7) {
 
       forecastMessage += `\n💡 *Dica da Joana Bot:* Planifica as tuas atividades baseado nesta previsão!`;
       forecastMessage += `\n📊 _Dados fornecidos por ${forecastData.source}_`;
-
-      await whatsappApi.enviarMensagemUsandoWhatsappAPI(forecastMessage, phoneNumber);
-    } else {
-      await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-        `❌ Eh pá, não consegui obter a previsão para ${city}. Verifica se o nome da cidade está correto e tenta novamente.`,
-        phoneNumber
-      );
-    }
-  } catch (error) {
-    console.error('❌ Erro ao processar previsão:', error);
-    await whatsappApi.enviarMensagemErro(phoneNumber, "Erro ao obter previsão");
+      break;
   }
+
+  return forecastMessage;
 }
 
 async function handleClothingAdviceRequest(phoneNumber) {
@@ -4255,7 +4374,7 @@ async function handleTomorrowForecastCommand(phoneNumber, user) {
     // Buscar dados atuais do clima para determinar a cidade
     const targetCity = user?.preferred_city || user?.last_city || 'Beira';
 
-    await whatsappApi.enviarMensagemCarregamento(phoneNumber, `📅 Eh pá, deixa eu ver como vai estar amanhã em ${targetCity}...`);
+    await whatsappApi.enviarMensagemCarregamento(phoneNumber, `📅 deixa eu ver como vai estar amanhã em ${targetCity}...`);
 
     // Buscar previsão de 2 dias (hoje e amanhã)
     const forecast = await weatherService.getWeatherForecast(targetCity, 2);
@@ -4271,9 +4390,39 @@ async function handleTomorrowForecastCommand(phoneNumber, user) {
     // Pegar dados de amanhã (índice 1)
     const tomorrowData = forecast.forecasts[1];
 
+    // Detectar nível de expertise do usuário
+    const userLevel = (user && (user.expertiseLevel || user.expertise_level || user.preferred_complexity)) ?
+      (user.expertiseLevel || user.expertise_level || user.preferred_complexity) : 'basic';
+
+    // Definir instruções de tom baseadas no nível do usuário
+    const getToneInstructionsForLevel = (level) => {
+      switch (level) {
+        case 'advanced':
+          return `- RESPOSTA TÉCNICA: Use terminologia meteorológica apropriada (amplitude térmica, probabilidade de precipitação, velocidade do vento)
+- Inclua análise detalhada e fundamentada da previsão
+- Evite gírias e expressões informais
+- Use linguagem formal e profissional
+- Mencione dados técnicos quando relevante (pressão atmosférica, índice UV, etc.)`;
+        case 'intermediate':
+          return `- RESPOSTA EQUILIBRADA: Combine simplicidade com contexto técnico moderado
+- Use alguns termos meteorológicos básicos explicados
+- Linguagem moçambicana natural mas educativa
+- Balance entre informal e informativo`;
+        default: // basic
+          return `- RESPOSTA SIMPLES: Use linguagem muito fácil e acessível
+- Linguagem moçambicana casual, gírias OK ("oi", "mano", etc.)
+- Evite termos técnicos complexos
+- Foque no prático e útil`;
+      }
+    };
+
+    const toneInstructions = getToneInstructionsForLevel(userLevel);
+
     // Preparar prompt para a AI gerar a resposta
     const tomorrowPrompt = `
-Eh pá, sou a Joana Bot, a tua assistente meteorológica aqui na Beira! 🇲🇿
+Sou a Joana Bot, assistente meteorológica especializada na cidade da Beira e arredores! 🇲🇿
+
+NÍVEL DO USUÁRIO: ${userLevel}
 
 Baseado nos dados meteorológicos oficiais para amanhã em ${forecast.city}:
 
@@ -4283,14 +4432,17 @@ Baseado nos dados meteorológicos oficiais para amanhã em ${forecast.city}:
 🌧️ Chance de chuva: ${tomorrowData.chanceOfRain || 0}%
 💨 Vento: ${tomorrowData.windSpeed || 'não disponível'} km/h
 
-Gera uma resposta amigável e natural em português moçambicano, explicando a previsão para amanhã. Inclui:
-1. Uma saudação simpática
-2. Os dados principais de forma clara
-3. Interpretação do que significa (se está bom, ruim, etc.)
+INSTRUÇÕES DE TOM:
+${toneInstructions}
+
+Gera uma resposta sobre a previsão para amanhã. Inclui:
+1. Uma saudação apropriada para o nível
+2. Os dados principais apresentados conforme o nível
+3. Interpretação meteorológica adequada ao usuário
 4. Dicas práticas baseadas no tempo (roupa, atividades, cuidados)
 5. Uma despedida motivacional
 
-Mantém o tom conversacional, como se estivesse falando com um amigo da Beira. Máximo 300 palavras.
+Máximo ${userLevel === 'basic' ? '250' : userLevel === 'intermediate' ? '350' : '400'} palavras.
     `;
 
     // Chamar AI para gerar a resposta
@@ -4301,25 +4453,63 @@ Mantém o tom conversacional, como se estivesse falando com um amigo da Beira. M
       tomorrowMessage = aiResponse.trim();
       console.log('✅ Resposta AI para amanhã gerada com sucesso');
     } else {
-      // Fallback caso a AI falhe
-      console.log('⚠️ AI falhou, usando fallback para amanhã');
+      // Fallback caso a AI falhe - também adaptar ao nível do usuário
+      console.log('⚠️ AI falhou, usando fallback para amanhã adaptado ao nível:', userLevel);
       const emoji = getWeatherEmoji(tomorrowData.description);
-      tomorrowMessage = `📅 *Previsão para amanhã em ${forecast.city}*\n\n`;
-      tomorrowMessage += `${emoji} *${tomorrowData.dayName || 'Amanhã'}*\n`;
-      tomorrowMessage += `🌡️ ${tomorrowData.minTemp}${forecast.units} - ${tomorrowData.maxTemp}${forecast.units}\n`;
-      tomorrowMessage += `📝 ${tomorrowData.description}\n`;
 
-      if (tomorrowData.humidity) {
-        tomorrowMessage += `💧 Umidade: ${tomorrowData.humidity}%\n`;
-      }
-      if (tomorrowData.chanceOfRain && tomorrowData.chanceOfRain > 0) {
-        tomorrowMessage += `🌧️ Chuva: ${tomorrowData.chanceOfRain}%\n`;
-      }
-      if (tomorrowData.windSpeed && tomorrowData.windSpeed > 0) {
-        tomorrowMessage += `💨 Vento: ${tomorrowData.windSpeed} km/h\n`;
-      }
+      if (userLevel === 'advanced') {
+        tomorrowMessage = `📅 *Análise meteorológica para amanhã em ${forecast.city}*\n\n`;
+        tomorrowMessage += `${emoji} *${tomorrowData.dayName || 'Amanhã'}*\n`;
+        tomorrowMessage += `🌡️ Amplitude térmica: ${tomorrowData.minTemp}${forecast.units} - ${tomorrowData.maxTemp}${forecast.units}\n`;
+        tomorrowMessage += `📝 Condições atmosféricas: ${tomorrowData.description}\n`;
 
-      tomorrowMessage += `\n💡 *Dica da Joana Bot:* Planifica as tuas actividades baseado nesta previsão!`;
+        if (tomorrowData.humidity) {
+          tomorrowMessage += `💧 Humidade relativa: ${tomorrowData.humidity}%\n`;
+        }
+        if (tomorrowData.chanceOfRain && tomorrowData.chanceOfRain > 0) {
+          tomorrowMessage += `🌧️ Probabilidade de precipitação: ${tomorrowData.chanceOfRain}%\n`;
+        }
+        if (tomorrowData.windSpeed && tomorrowData.windSpeed > 0) {
+          tomorrowMessage += `💨 Velocidade do vento: ${tomorrowData.windSpeed} km/h\n`;
+        }
+
+        tomorrowMessage += `\n🎯 *Recomendação técnica:* Baseie o planeamento das atividades na análise dos parâmetros meteorológicos apresentados.`;
+      } else if (userLevel === 'intermediate') {
+        tomorrowMessage = `📅 *Previsão detalhada para amanhã em ${forecast.city}*\n\n`;
+        tomorrowMessage += `${emoji} *${tomorrowData.dayName || 'Amanhã'}*\n`;
+        tomorrowMessage += `🌡️ Temperatura: ${tomorrowData.minTemp}${forecast.units} - ${tomorrowData.maxTemp}${forecast.units}\n`;
+        tomorrowMessage += `📝 Condições: ${tomorrowData.description}\n`;
+
+        if (tomorrowData.humidity) {
+          tomorrowMessage += `💧 Humidade: ${tomorrowData.humidity}% (${tomorrowData.humidity > 80 ? 'alta' : tomorrowData.humidity > 60 ? 'moderada' : 'baixa'})\n`;
+        }
+        if (tomorrowData.chanceOfRain && tomorrowData.chanceOfRain > 0) {
+          tomorrowMessage += `🌧️ Chance de chuva: ${tomorrowData.chanceOfRain}%\n`;
+        }
+        if (tomorrowData.windSpeed && tomorrowData.windSpeed > 0) {
+          tomorrowMessage += `💨 Vento: ${tomorrowData.windSpeed} km/h\n`;
+        }
+
+        tomorrowMessage += `\n💡 *Dica da Joana Bot:* Planifica as atividades considerando estes dados meteorológicos!`;
+      } else {
+        // Basic level (original)
+        tomorrowMessage = `📅 *Previsão para amanhã em ${forecast.city}*\n\n`;
+        tomorrowMessage += `${emoji} *${tomorrowData.dayName || 'Amanhã'}*\n`;
+        tomorrowMessage += `🌡️ ${tomorrowData.minTemp}${forecast.units} - ${tomorrowData.maxTemp}${forecast.units}\n`;
+        tomorrowMessage += `📝 ${tomorrowData.description}\n`;
+
+        if (tomorrowData.humidity) {
+          tomorrowMessage += `💧 Umidade: ${tomorrowData.humidity}%\n`;
+        }
+        if (tomorrowData.chanceOfRain && tomorrowData.chanceOfRain > 0) {
+          tomorrowMessage += `🌧️ Chuva: ${tomorrowData.chanceOfRain}%\n`;
+        }
+        if (tomorrowData.windSpeed && tomorrowData.windSpeed > 0) {
+          tomorrowMessage += `💨 Vento: ${tomorrowData.windSpeed} km/h\n`;
+        }
+
+        tomorrowMessage += `\n💡 *Dica da Joana Bot:* Planifica as tuas actividades baseado nesta previsão!`;
+      }
     }
 
     await whatsappApi.enviarMensagemUsandoWhatsappAPI(tomorrowMessage, phoneNumber);

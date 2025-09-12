@@ -336,6 +336,9 @@ Estou aqui para te ajudar! 🇲🇿`;
     }
 
     buildAnalysisPrompt(message, context) {
+        const userLevel = (context && (context.expertiseLevel || context.expertise_level || context.preferred_complexity)) ?
+            (context.expertiseLevel || context.expertise_level || context.preferred_complexity) : 'basic';
+
         return `Eh pá, sou um assistente que entende bem como os moçambicanos falam sobre o tempo.
 
 A pessoa escreveu: "${message}"
@@ -344,6 +347,14 @@ Contexto da conversa:
 - Já fizeram ${context.queryCount || 0} perguntas antes
 - Última cidade que mencionaram: ${context.lastCity || 'nenhuma ainda'}
 - Onde estão agora: ${context.currentLocation || 'não sei'}
+- NÍVEL DO USUÁRIO: ${userLevel}
+
+${userLevel === 'advanced' ?
+                'RESPOSTA TÉCNICA: Use terminologia meteorológica apropriada, inclua análise detalhada, evite gírias' :
+                userLevel === 'intermediate' ?
+                    'RESPOSTA EQUILIBRADA: Combine simplicidade com contexto técnico moderado' :
+                    'RESPOSTA SIMPLES: Use linguagem muito fácil e acessível, gírias moçambicanas OK'
+            }
 
 Preciso perceber o que eles realmente querem. SEJA MUITO PRECISO:
 
@@ -490,9 +501,14 @@ REGENERAR resposta mencionando APENAS locais da lista fornecida. SEM inventar no
     buildWeatherResponsePrompt(analysis, weatherData, userContext) {
         const temp = parseInt(weatherData.temperature);
         const city = weatherData.city;
+        const userLevel = (userContext && (userContext.expertiseLevel || userContext.expertise_level || userContext.preferred_complexity)) ?
+            (userContext.expertiseLevel || userContext.expertise_level || userContext.preferred_complexity) : 'basic';
         const isActivityRequest = analysis.intent === 'ideias_de_atividades' ||
             analysis.intent === 'activity_recommendation' ||
             analysis.intent === 'tipo_de_atividade';
+
+        // Definir instruções de tom baseadas no nível do usuário
+        const toneInstructions = this.getToneInstructionsForLevel(userLevel);
 
         // ====== MUDANÇA CRÍTICA: Sempre incluir locais se for Beira ======
         if (city.toLowerCase() === 'beira') {
@@ -514,6 +530,7 @@ REGENERAR resposta mencionando APENAS locais da lista fornecida. SEM inventar no
                 return `${this.getBotIdentityContext()}
 
 A pessoa perguntou sobre atividades/locais para ir hoje em Beira, com ${temp}°C e ${weatherData.description}.
+NÍVEL DO USUÁRIO: ${userLevel}
 
 DADOS METEOROLÓGICOS ATUAIS:
 - Temperatura: ${temp}°C
@@ -529,12 +546,11 @@ INSTRUÇÕES CRÍTICAS:
 🚨 NUNCA menciones: "Praia Nova", "Mercado do Peixe", "Jardim do Inhamízua", "Beira Shopping", "Jardins municipais" ou outros locais não listados!
 
 FORMATO DA RESPOSTA:
-- Linguagem moçambicana natural e fluida 
+${toneInstructions}
 - Menciona 2-3 locais REAIS adequados para ${temp}°C
 - Explica porque são boas opções para esta temperatura
 - Máximo 250 palavras
 - Usa emojis apropriados
-- Tom amigável: "Eh pá", "mano", etc.
 
 Baseado na temperatura de ${temp}°C, sugere locais REAIS da lista acima e explica porque são adequados hoje.
 
@@ -544,6 +560,7 @@ Minha resposta natural e fluida usando APENAS locais reais:`;
                 return `${this.getBotIdentityContext()}
 
 A pessoa perguntou: "${analysis.intent}" sobre o clima em Beira.
+NÍVEL DO USUÁRIO: ${userLevel}
 
 TEMPO ATUAL em ${city}:
 - ${temp}°C (${temp > 30 ? 'bem quente!' : temp < 18 ? 'fresquinho' : 'temperatura boa'})
@@ -554,12 +571,11 @@ LOCAIS REAIS DA BEIRA DISPONÍVEIS (se quiseres mencionar algum):
 ${locaisReaisPrompt}
 
 INSTRUÇÕES:
-- Responde sobre o clima de forma natural como um moçambicano
+${toneInstructions}
 - Se mencionares locais, usa APENAS os da lista acima
 - NUNCA inventes locais como "Praia Nova", "Mercado do Peixe", "Jardim do Inhamízua"
 - Podes sugerir 1-2 locais reais se for relevante para o clima
-- Linguagem moçambicana casual, emojis apropriados, máximo 200 palavras
-- Tom: "Eh pá", "mano", etc.
+- Máximo 200 palavras
 
 Minha resposta natural sobre o clima (mencionando locais reais se relevante):`;
             }
@@ -567,6 +583,7 @@ Minha resposta natural sobre o clima (mencionando locais reais se relevante):`;
         } else {
             // Para outras cidades (comportamento original)
             return `Eh pá, vou te ajudar com informações fixes sobre ${city}!
+NÍVEL DO USUÁRIO: ${userLevel}
 
 PERGUNTA: ${analysis.intent}
 TEMPO ATUAL em ${city}:
@@ -574,14 +591,42 @@ TEMPO ATUAL em ${city}:
 - ${weatherData.description}
 - Humidade: ${weatherData.humidity}%
 
-Quero dar uma resposta natural e prática como um moçambicano daria. Se perguntaram sobre locais, dar locais específicos. Se perguntaram sobre tempo, dar detalhes do tempo.
+${toneInstructions}
 
-Use linguagem moçambicana casual, emojis apropriados, máximo 300 palavras.
+Quero dar uma resposta natural e prática. Se perguntaram sobre locais, dar locais específicos. Se perguntaram sobre tempo, dar detalhes do tempo.
+
+Máximo 300 palavras.
 
 Minha resposta:`;
         }
     }
 
+    // ===============================================
+    // HELPER: INSTRUÇÕES DE TOM BASEADAS NO NÍVEL
+    // ===============================================
+
+    getToneInstructionsForLevel(userLevel) {
+        switch (userLevel) {
+            case 'advanced':
+                return `- RESPOSTA TÉCNICA: Use terminologia meteorológica apropriada (sensação térmica, humidade relativa, pressão atmosférica)
+- Inclua análise detalhada e fundamentada
+- Evite gírias e expressões informais
+- Use linguagem formal e profissional
+- Mencione dados técnicos quando relevante`;
+
+            case 'intermediate':
+                return `- RESPOSTA EQUILIBRADA: Combine simplicidade com contexto técnico moderado
+- Use alguns termos meteorológicos básicos
+- Linguagem moçambicana natural mas educativa
+- Balance entre informal e informativo`;
+
+            default: // basic
+                return `- RESPOSTA SIMPLES: Use linguagem muito fácil e acessível
+- Linguagem moçambicana casual, gírias OK ("Eh pá", "mano", etc.)
+- Evite termos técnicos complexos
+- Foque no prático e útil`;
+        }
+    }
 
     buildBeiraLocationsForPrompt() {
         let locaisPrompt = '';
