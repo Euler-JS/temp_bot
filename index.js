@@ -154,6 +154,49 @@ async function processAdvancedTextMessage(messageText, phoneNumber, enableAutoDe
     // Verificar comandos especiais primeiro...
     // [comandos existentes...]
 
+    if (messageText.toLowerCase().startsWith('/linguagem_formal') ||
+      messageText.toLowerCase().startsWith('/linguagem formal')) {
+
+      try {
+        const currentLevel = user?.expertise_level || process.env.DEFAULT_EXPERTISE_LEVEL || 'basic';
+
+        if (currentLevel === 'basic') {
+          // Mudar para advanced
+          await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+            '✅ *Linguagem formal ativada!*\n\nA partir de agora vou usar uma linguagem mais formal e detalhada nas minhas respostas sobre meteorologia. Vais receber explicações mais precisas e terminologia científica.',
+            phoneNumber
+          );
+
+          await saveOrUpdateAdvancedUser(phoneNumber, {
+            expertise_level: 'advanced',
+            last_command: '/linguagem_formal'
+          });
+
+        } else {
+          // Mudar para basic
+          await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+            '✅ *Linguagem simples ativada!*\n\nVoltei para uma linguagem mais simples e direta. Vou usar explicações fáceis de entender, como sempre falamos aqui na nossa terra.',
+            phoneNumber
+          );
+
+          await saveOrUpdateAdvancedUser(phoneNumber, {
+            expertise_level: 'basic',
+            last_command: '/linguagem_formal->basic'
+          });
+        }
+
+        return; // Comando processado, sair da função
+
+      } catch (error) {
+        console.error('❌ Erro ao processar comando /linguagem_formal:', error);
+        await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+          '❌ Não consegui alterar a linguagem agora. Tenta mais tarde.',
+          phoneNumber
+        );
+        return;
+      }
+    }
+
     if (messageText.toLowerCase().startsWith('/sugestoes') ||
       messageText.toLowerCase().startsWith('/sugestões') ||
       messageText.toLowerCase() === 'sugestoes' ||
@@ -4401,7 +4444,7 @@ async function handleTomorrowForecastCommand(phoneNumber, user) {
           return `- RESPOSTA TÉCNICA: Use terminologia meteorológica apropriada (amplitude térmica, probabilidade de precipitação, velocidade do vento)
 - Inclua análise detalhada e fundamentada da previsão
 - Evite gírias e expressões informais
-- Use linguagem formal e profissional
+- Use linguagem formal, sem saudações casuais, sem termos como 'prezados, carissímos usuários, etc.'
 - Mencione dados técnicos quando relevante (pressão atmosférica, índice UV, etc.)`;
         case 'intermediate':
           return `- RESPOSTA EQUILIBRADA: Combine simplicidade com contexto técnico moderado
@@ -4420,7 +4463,7 @@ async function handleTomorrowForecastCommand(phoneNumber, user) {
 
     // Preparar prompt para a AI gerar a resposta
     const tomorrowPrompt = `
-Sou a Joana Bot, assistente meteorológica especializada na cidade da Beira e arredores! 🇲🇿
+sou assistente meteorológica especializada na cidade da Beira e arredores! 🇲🇿
 
 NÍVEL DO USUÁRIO: ${userLevel}
 
