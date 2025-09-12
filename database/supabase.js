@@ -156,7 +156,9 @@ class SupabaseService {
                 intent: analysis.intent,
                 city: analysis.city,
                 type: analysis.type,
-                expertise_level: enableProgression ? analysis.expertiseLevel : defaultLevel,
+                // Se progressão habilitada, registrar o nível sugerido pela análise;
+                // caso contrário, manter o nível atual do usuário para evitar sobrescrita inesperada.
+                expertise_level: enableProgression ? analysis.expertiseLevel : (user.expertise_level || defaultLevel),
                 response_length: response?.length || 0
             };
 
@@ -268,9 +270,10 @@ class SupabaseService {
         const enableProgression = process.env.ENABLE_EXPERTISE_PROGRESSION === 'true';
         const defaultLevel = process.env.DEFAULT_EXPERTISE_LEVEL || 'basic';
 
-        // Se a progressão estiver desabilitada, sempre retorna o nível padrão
+        // Se a progressão estiver desabilitada, não sobrescreve o nível do usuário
+        // (retornar null sinaliza que não deve haver atualização automática)
         if (!enableProgression) {
-            return defaultLevel;
+            return null;
         }
 
         // Lógica de progressão automática (só executa se estiver habilitada)
