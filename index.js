@@ -3815,6 +3815,82 @@ app.post("/admin/send-alert", async (req, res) => {
   }
 });
 
+app.post("/send-info", async (req, res) => {
+  try {
+    // Rota usada por cron job para enviar a TEMPERATURA DO DIA a todos os utilizadores
+    // Comportamento: buscar todos os utilizadores que habilitaram notificações,
+    // agrupar por cidade, buscar a temperatura atual e enviar mensagem simples.
+
+    // Buscar usuários com notificações ativas (evita enviar para inativos)
+    console.log('Iniciando envio ', req.body);
+    if (req.body.key !== process.env.CRON_KEY) {
+      return res.status(401).json({ success: false, error: 'Senha incorreta' });
+    }
+    const users = await dbService.getUsersWithNotifications();
+
+    // console.log('Users with notifications:', users);
+    if (!users || users.length === 0) {
+      return res.json({ success: true, message: 'Nenhum usuário com notificações habilitadas' });
+    }
+
+    // Agrupar utilizadores por cidade (preferência ou última cidade)
+    const usersByCity = {};
+    for (const u of users) {
+      const city = (u.preferred_city || u.last_city || 'Beira').trim();
+      if (!usersByCity[city]) usersByCity[city] = [];
+      usersByCity[city].push(u);
+    }
+
+    let totalSent = 0;
+    let totalFailed = 0;
+
+    // Para cada cidade, obter dados meteorológicos e enviar mensagem a seus usuários
+    for (const [city, cityUsers] of Object.entries(usersByCity)) {
+      let weather = null;
+      try {
+        weather = await weatherService.getCurrentWeather(city, 'celsius');
+      } catch (err) {
+        console.error(`⚠️ Falha ao obter clima para ${city}:`, err?.message || err);
+        // usar fallback simples
+        weather = { city, temperature: null, description: 'Dados indisponíveis', humidity: null };
+      }
+
+      const tempText = weather.temperature !== null && weather.temperature !== undefined ? `${Math.round(weather.temperature)}°C` : 'sem dados';
+      const desc = weather.description || '';
+      const sentAt = new Date().toISOString();
+
+      const message = `🌤️ *Temperatura do dia - ${city}*\n\n` +
+        `🌡️ Temperatura média: ${tempText}\n` +
+        (weather.humidity ? `💧 Umidade: ${weather.humidity}%\n` : '') +
+        (desc ? `☁️ ${desc}\n` : '') +
+        `\n---\n_Enviado pela Joana Bot em ${new Date().toLocaleString('pt-BR')}_`;
+
+      for (const u of cityUsers) {
+        try {
+          await whatsappApi.enviarMensagemUsandoWhatsappAPI(message, u.contact);
+          // Registrar entrega simples
+          await dbService.saveAlertDelivery(null, u.contact, 'sent');
+          await dbService.saveAdminLog('info', `Temperatura enviada para ${u.contact}`, 'cron_send_info', { city, userContact: u.contact });
+          totalSent++;
+
+          // Pequeno delay para evitar throttling
+          if (cityUsers.length > 20) await new Promise(r => setTimeout(r, 80));
+        } catch (err) {
+          console.error(`❌ Erro ao enviar para ${u.contact}:`, err?.message || err);
+          await dbService.saveAlertDelivery(null, u.contact, 'failed', err?.message || String(err));
+          await dbService.saveAdminLog('error', `Falha ao enviar temperatura para ${u.contact}`, 'cron_send_info', { city, userContact: u.contact, error: err?.message });
+          totalFailed++;
+        }
+      }
+    }
+
+    return res.json({ success: true, sent: totalSent, failed: totalFailed, total: users.length });
+  } catch (error) {
+    console.error('❌ Erro no cron /send-info:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 app.get("/admin/recent-alerts", async (req, res) => {
   try {
     // Buscar alertas recentes do banco de dados

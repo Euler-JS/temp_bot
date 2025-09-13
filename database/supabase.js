@@ -378,7 +378,7 @@ class SupabaseService {
             const { data, error } = await this.supabase
                 .from('users')
                 .select('*')
-                .eq('notifications', true)
+                // .eq('notifications', true)
                 .order('last_access', { ascending: false });
 
             if (error) {
