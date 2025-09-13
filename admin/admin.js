@@ -1207,5 +1207,23 @@ function confirmSendAlert() {
     admin.sendAlert();
 }
 
-// Initialize dashboard
-const admin = new AdminDashboard();
+// Authentication helpers (mirrors login.js behavior)
+const _TOKEN_KEY = 'tempbot_admin_token';
+function _getToken() { return localStorage.getItem(_TOKEN_KEY); }
+function logoutAdmin() {
+    localStorage.removeItem(_TOKEN_KEY);
+    // redirect to login
+    window.location.href = 'login.html';
+}
+
+// Expose logout to global scope so index.html can call it
+window.logoutAdmin = logoutAdmin;
+
+// Initialize dashboard only when authenticated
+if (_getToken()) {
+    const admin = new AdminDashboard();
+    window.admin = admin;
+} else {
+    // Not logged in: redirect to login
+    window.location.href = 'login.html';
+}

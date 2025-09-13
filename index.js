@@ -3404,9 +3404,24 @@ app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'admin', 'index.html'));
 });
 
+// Fallback: servir admin/index.html quando requisitado diretamente
+app.get('/admin/index.html', (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin', 'index.html'));
+});
+
 // Servir arquivo JS do admin (duas rotas para compatibilidade)
 app.get('/admin/admin.js', (req, res) => {
   res.sendFile(path.join(__dirname, 'admin', 'admin.js'));
+});
+
+// Servir página de login do admin
+app.get('/admin/login.html', (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin', 'login.html'));
+});
+
+// Servir script de login
+app.get('/admin/login.js', (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin', 'login.js'));
 });
 
 // Rota adicional para compatibilidade com caminho relativo
