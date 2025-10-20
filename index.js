@@ -135,6 +135,7 @@ app.post("/webhook", async (req, res) => {
         phoneNumber
       );
 
+      return
       // Processar diferentes tipos de mensagem
       if (message?.type === "text") {
         await processAdvancedTextMessage(message.text.body, phoneNumber);
