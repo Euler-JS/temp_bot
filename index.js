@@ -117,11 +117,7 @@ app.get("/webhook", async (req, res) => {
 app.post("/webhook", async (req, res) => {
   const body = req.body;
 
-  //Porque estamos com problemas...
-  await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-    'A JoanaBot encontra-se temporariamente em manutenção. Voltaremos em breve com todas funcionalidades ativas. Agradecemos a sua compreensão. \n\n Associação FACE',
-    phoneNumber
-  );
+
 
   if (body.object === "whatsapp_business_account") {
     const entry = body.entry[0];
@@ -132,6 +128,12 @@ app.post("/webhook", async (req, res) => {
       const phoneNumber = message.from;
 
       console.log("📱 Mensagem recebida:", message);
+
+      //Porque estamos com problemas...
+      await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+        'A JoanaBot encontra-se temporariamente em manutenção. Voltaremos em breve com todas funcionalidades ativas. Agradecemos a sua compreensão. \n\n Associação FACE',
+        phoneNumber
+      );
 
       // Processar diferentes tipos de mensagem
       if (message?.type === "text") {
