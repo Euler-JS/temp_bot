@@ -115,12 +115,12 @@ app.get("/webhook", async (req, res) => {
 });
 
 app.post("/webhook", async (req, res) => {
-  whatsappApi.enviarMensagemUsandoWhatsappAPI(
-    'A JoanaBot encontra-se temporariamente em manutenção. Voltaremos em breve com todas funcionalidades ativas. Agradecemos a sua compreensão. \n\n Associação FACE',
-    req.body.entry[0].changes[0].value.messages[0].from
-  );
-  res.sendStatus(200);
-  return
+  // whatsappApi.enviarMensagemUsandoWhatsappAPI(
+  //   'A JoanaBot encontra-se temporariamente em manutenção. Voltaremos em breve com todas funcionalidades ativas. Agradecemos a sua compreensão. \n\n Associação FACE',
+  //   req.body.entry[0].changes[0].value.messages[0].from
+  // );
+  // res.sendStatus(200);
+  // return
   const body = req.body;
 
 
@@ -136,12 +136,12 @@ app.post("/webhook", async (req, res) => {
       console.log("📱 Mensagem recebida:", message);
 
       //Porque estamos com problemas...
-      await whatsappApi.enviarMensagemUsandoWhatsappAPI(
-        'A JoanaBot encontra-se temporariamente em manutenção. Voltaremos em breve com todas funcionalidades ativas. Agradecemos a sua compreensão. \n\n Associação FACE',
-        phoneNumber
-      );
+      // await whatsappApi.enviarMensagemUsandoWhatsappAPI(
+      //   'A JoanaBot encontra-se temporariamente em manutenção. Voltaremos em breve com todas funcionalidades ativas. Agradecemos a sua compreensão. \n\n Associação FACE',
+      //   phoneNumber
+      // );
 
-      return
+      // return
       // Processar diferentes tipos de mensagem
       if (message?.type === "text") {
         await processAdvancedTextMessage(message.text.body, phoneNumber);
